@@ -1,0 +1,10 @@
+import React, {useMemo, useState} from 'react';
+import { BrainCircuit, Eye, EyeOff, LogIn } from 'lucide-react';import AvatarPreview from './AvatarPreview';
+export default function Login({users,onLogin}){
+  const [email,setEmail]=useState('admin@randerscrm.local');
+  const [senha,setSenha]=useState('randers123');
+  const [show,setShow]=useState(false); const [error,setError]=useState('');
+  const preview=useMemo(()=>users.find(u=>u.email.toLowerCase()===email.toLowerCase()),[users,email]);
+  const submit=e=>{e.preventDefault();const user=users.find(u=>u.email.toLowerCase()===email.toLowerCase()&&u.senha===senha&&u.ativo);if(!user)return setError('E-mail ou senha inválidos, ou usuário inativo.');setError('');onLogin(user)};
+  return <div className="login-screen"><section className="login-brand"><div className="login-logo"><BrainCircuit size={54}/></div><h1>Randers’CRM</h1><p>Gestão inteligente de revendedores, metas e relacionamentos.</p><div className="login-points"><span>✓ Carteiras por colaborador</span><span>✓ Agenda e histórico</span><span>✓ Importação inteligente</span></div></section><form className="login-card" onSubmit={submit}><img src="/brain.svg" className="login-brain"/><small>Acesso seguro</small><h2>Bem-vindo</h2><p>Entre com seu e-mail e senha.</p>{preview&&<div className="login-preview"><span><AvatarPreview compact avatar={preview.avatarConfig}/></span><div><b>{preview.nome}</b><small>{preview.cargo} · {preview.carteira}</small></div></div>}<label>E-mail<input value={email} onChange={e=>setEmail(e.target.value)} type="email" required/></label><label>Senha<div className="password-field"><input value={senha} onChange={e=>setSenha(e.target.value)} type={show?'text':'password'} required/><button type="button" onClick={()=>setShow(!show)}>{show?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{error&&<div className="form-error">{error}</div>}<button className="primary login-submit"><LogIn size={18}/>Entrar</button><small className="login-hint">Administrador: admin@randerscrm.local · randers123</small></form></div>
+}

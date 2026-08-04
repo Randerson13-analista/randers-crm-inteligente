@@ -1,0 +1,2 @@
+import React from 'react';
+export default function Notifications({items,onClose}){return <div className="notification-popover"><div className="notification-head"><b>Notificações</b><button onClick={onClose}>×</button></div>{items.map(n=><div className="notification-item" key={n.id}><strong>{n.title}</strong><span>{n.text}</span></div>)}{!items.length&&<div className="empty">Tudo em dia.</div>}</div>}
