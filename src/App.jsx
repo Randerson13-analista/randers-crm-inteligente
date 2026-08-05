@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Closet from './components/Closet';
+import ClosetErrorBoundary from './components/ClosetErrorBoundary';
 import Dashboard from './components/Dashboard';
 import Wallet from './components/Wallet';
 import Importer from './components/Importer';
@@ -305,7 +306,7 @@ export default function App() {
   } else if (active === 'Importar planilhas') {
     content = <Importer onImport={handleImport} imports={state.imports}/>;
   } else if (active === 'Meu Closet') {
-    content = <Closet initialAvatar={user.avatarConfig} coins={user.coins || 0} onSave={async avatar => {
+    content = <ClosetErrorBoundary><Closet initialAvatar={user.avatarConfig} coins={user.coins || 0} onSave={async avatar => {
       try {
         await saveAvatar(user.id, avatar);
         setUser(current => ({ ...current, avatarConfig: avatar }));
@@ -315,7 +316,7 @@ export default function App() {
       } catch (error) {
         notify(error.message || 'Não foi possível salvar o avatar.');
       }
-    }}/>;
+    }}/></ClosetErrorBoundary>;
   } else if (active === 'Meu perfil') {
     content = <Achievements user={user} history={state.history}/>;
   } else if (active === 'Agenda') {
