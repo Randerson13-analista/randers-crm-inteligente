@@ -1,12 +1,14 @@
 {
   "name": "randers-crm",
   "private": true,
-  "version": "6.0.1-closet-stable",
+  "version": "7.0.0-professional-avatar-race",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "validate": "node scripts/validate-project.mjs",
+    "prebuild": "npm run validate"
   },
   "dependencies": {
     "react": "18.3.1",
