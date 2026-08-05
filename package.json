@@ -1,7 +1,7 @@
 {
   "name": "randers-crm",
   "private": true,
-  "version": "10.0.4-session-cache-fix",
+  "version": "10.0.5-real-import",
   "type": "module",
   "scripts": {
     "dev": "vite",

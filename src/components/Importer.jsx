@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { CheckCircle2, FileSpreadsheet, UploadCloud } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { deriveImportedStatus } from '../services/importRules';
 import {
   ACTIVITY_SEGMENTS,
   RECOVERY_GROUPS,
@@ -79,21 +80,39 @@ function parseWorkbook(file, workbook) {
       ]);
       const blocked = String(pick(source, ['bloqueado', 'bloqueio'])).trim();
       const inactivity = pick(source, ['ciclosinatividade', 'ciclos inatividade', 'inatividade']);
+      const situation = pick(source, ['situacao']);
+      const antifraud = pick(source, ['retorno da consulta antifraude gera', 'retorno da consulta antifraude']);
+      const orderCode = pick(source, ['codigo pedido revendedora']);
+      const orderCapturedAt = pick(source, ['data captacao pedido revendedora']);
+      const orderApprovedAt = pick(source, ['data aprovacao pedido revendedora']);
+      const orderInvoicedAt = pick(source, ['data faturamento pedido revendedora']);
+      const importedOutcome = classification.base === 'Intenções'
+        ? deriveImportedStatus({ situation, antifraud, orderCode, orderCapturedAt, orderApprovedAt, orderInvoicedAt })
+        : { status: 'Pendente', blocked: false, hasOrder: false, fraud: false };
       rows.push(normalizeResellerClassification({
         codigo: String(pick(source, ['codigo revendedor', 'codigo', 'cod rev', 'id rev'])).trim(),
         nome: String(nome).trim(),
         telefone: String(phone).replace(/\D/g, ''),
         cidade: String(pick(source, ['cidade residencial', 'cidade', 'municipio', 'localidade'])).trim(),
         bairro: String(pick(source, ['bairro'])).trim(),
-        bloqueado: normalize(blocked) === 'sim' || normalize(blocked) === 'true',
+        bloqueado: normalize(blocked) === 'sim' || normalize(blocked) === 'true' || importedOutcome.blocked,
         ...classification,
-        status: 'Pendente',
+        status: importedOutcome.status,
         metadata: {
           sourceFile: file.name,
           sourceSheet: sheetName,
           sourceRow: index + 2,
           ciclosInatividade: inactivity === '' ? null : Number(inactivity),
           papelOriginal: String(pick(source, ['papel'])).trim(),
+          situacaoOrigem: String(situation || '').trim(),
+          situacaoDocumento: String(pick(source, ['situacao do documento']) || '').trim(),
+          antifraude: String(antifraud || '').trim(),
+          codigoPedido: String(orderCode || '').trim(),
+          dataCaptacaoPedido: String(orderCapturedAt || '').trim(),
+          dataAprovacaoPedido: String(orderApprovedAt || '').trim(),
+          dataFaturamentoPedido: String(orderInvoicedAt || '').trim(),
+          possuiPedido: importedOutcome.hasOrder,
+          suspeitaFraude: importedOutcome.fraud,
           classificationWarning: classification.base === 'Atividade' && !classification.nivel
             ? 'Segmentação da Atividade não identificada'
             : null,

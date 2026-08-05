@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { distributeWallets } from './assignment';
+import { mergeExistingImportState, mergeImportedRows } from './importRules';
 import { DEFAULT_TEMPLATES } from './whatsapp';
 import {
   normalizeResellerClassification,
@@ -327,16 +328,11 @@ export async function importResellers(
       rejected += 1;
       continue;
     }
-    consolidated.set(rowIdentity(normalized), {
-      ...(consolidated.get(rowIdentity(normalized)) || {}),
-      ...normalized,
-    });
+    const identity = rowIdentity(normalized);
+    consolidated.set(identity, mergeImportedRows(consolidated.get(identity), normalized));
   }
 
   let prepared = [...consolidated.values()];
-  if (options.autoAssign && options.users?.length) {
-    prepared = distributeWallets(prepared, options.users);
-  }
 
   const { data: existingRows, error: existingError } = await supabase
     .from('resellers')
@@ -355,18 +351,30 @@ export async function importResellers(
     keys.forEach(key => existingByKey.set(key, item));
   });
 
-  const inserts = [];
-  const updates = [];
-  for (const row of prepared) {
+  const matchedRows = prepared.map(row => {
     const keys = [
       row.codigo ? `code:${normalizeText(row.codigo)}` : '',
       row.telefone ? `phone:${normalizePhoneKey(row.telefone)}` : '',
       `name:${normalizeText(row.nome)}|${normalizeText(row.cidade)}`,
     ].filter(Boolean);
     const match = keys.map(key => existingByKey.get(key)).find(Boolean);
+    return { row: match ? mergeExistingImportState(match, row) : row, match };
+  });
+
+  if (options.autoAssign && options.users?.length) {
+    const distributed = distributeWallets(matchedRows.map(item => item.row), options.users);
+    prepared = distributed;
+    distributed.forEach((row, index) => { matchedRows[index].row = row; });
+  } else {
+    prepared = matchedRows.map(item => item.row);
+  }
+
+  const inserts = [];
+  const updates = [];
+  matchedRows.forEach(({ row, match }) => {
     if (match) updates.push({ id: match.id, payload: resellerToDb(row, organizationId) });
     else inserts.push(resellerToDb(row, organizationId));
-  }
+  });
 
   let insertedCount = 0;
   for (let index = 0; index < inserts.length; index += 400) {
