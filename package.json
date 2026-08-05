@@ -1,7 +1,7 @@
 {
   "name": "randers-crm",
   "private": true,
-  "version": "3.0.0-supabase-auth",
+  "version": "4.0.0-supabase-data",
   "type": "module",
   "scripts": {
     "dev": "vite",
