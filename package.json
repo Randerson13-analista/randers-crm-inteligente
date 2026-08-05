@@ -1,7 +1,7 @@
 {
   "name": "randers-crm",
   "private": true,
-  "version": "10.0.2-invite-fallback",
+  "version": "10.0.3-password-setup",
   "type": "module",
   "scripts": {
     "dev": "vite",

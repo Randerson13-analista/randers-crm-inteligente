@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import Wallet from './components/Wallet';
 import Importer from './components/Importer';
 import SupabaseLogin from './components/SupabaseLogin';
+import PasswordSetup from './components/PasswordSetup';
 import Agenda from './components/Agenda';
 import History from './components/History';
 import Admin from './components/Admin';
@@ -75,6 +76,7 @@ export default function App() {
   const [dataLoading, setDataLoading] = useState(false);
   const [teamLoading, setTeamLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [toast, setToast] = useState('');
   const [showNotifs, setShowNotifs] = useState(false);
   const [selectedRev, setSelectedRev] = useState(null);
@@ -104,9 +106,11 @@ export default function App() {
       const appUser = await loadAppUser(authUser);
       setUser(appUser);
       setAuthError('');
-      await hydrate(appUser);
-      await logAudit(appUser.organizationId, appUser.id, 'Entrou no sistema.');
-      notify(`Bem-vindo, ${appUser.nome}!`);
+      if (!appUser.mustChangePassword) {
+        await hydrate(appUser);
+        await logAudit(appUser.organizationId, appUser.id, 'Entrou no sistema.');
+        notify(`Bem-vindo, ${appUser.nome}!`);
+      }
     } catch (error) {
       setAuthError(error.message || 'Não foi possível carregar seu perfil.');
       throw error;
@@ -117,7 +121,7 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
-    const applySession = async session => {
+    const applySession = async (session, event = '') => {
       if (!mounted) return;
       if (!session?.user) {
         setUser(null);
@@ -127,9 +131,12 @@ export default function App() {
       try {
         const appUser = await loadAppUser(session.user);
         if (!mounted) return;
-        setUser(appUser);
+        const requiresPassword = appUser.mustChangePassword || event === 'PASSWORD_RECOVERY';
+        const nextUser = requiresPassword ? { ...appUser, mustChangePassword: true } : appUser;
+        setUser(nextUser);
+        setPasswordRecovery(event === 'PASSWORD_RECOVERY');
         setAuthError('');
-        await hydrate(appUser);
+        if (!requiresPassword) await hydrate(nextUser);
       } catch (error) {
         if (!mounted) return;
         setUser(null);
@@ -144,7 +151,7 @@ export default function App() {
         setAuthLoading(false);
       }
     });
-    const subscription = onAuthStateChange(session => applySession(session));
+    const subscription = onAuthStateChange((event, session) => applySession(session, event));
     return () => {
       mounted = false;
       subscription?.unsubscribe?.();
@@ -335,6 +342,28 @@ export default function App() {
 
   if (!user) {
     return <><SupabaseLogin onAuthenticated={authenticate}/>{authError && <div className="global-auth-error">{authError}</div>}</>;
+  }
+
+  if (user.mustChangePassword) {
+    return <PasswordSetup
+      user={user}
+      recovery={passwordRecovery}
+      onComplete={async () => {
+        const nextUser = { ...user, mustChangePassword: false };
+        await hydrate(nextUser);
+        setUser(nextUser);
+        setPasswordRecovery(false);
+        try {
+          await logAudit(nextUser.organizationId, nextUser.id, passwordRecovery ? 'Redefiniu a senha.' : 'Criou a senha no primeiro acesso.');
+        } catch {
+          // A senha já foi salva; falha de auditoria não deve bloquear o acesso.
+        }
+        notify('Senha criada com segurança.');
+      }}
+      onSignOut={async () => {
+        try { await signOut(); } finally { setUser(null); setPasswordRecovery(false); }
+      }}
+    />;
   }
 
   const [title, subtitle] = titles[active] || [active, 'Módulo em preparação.'];
