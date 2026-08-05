@@ -28,3 +28,11 @@
 1. Executar `supabase/migrations/20260805_finish_core.sql` no SQL Editor.
 2. Republicar `supabase/functions/invite-collaborator/index.ts` como Edge Function.
 3. Fazer o deploy pela branch principal e atualizar o navegador com `Ctrl + Shift + R`.
+
+
+## v10.4 — sessão e cache
+- corrige carregamento infinito ao reabrir o navegador;
+- evita deadlock do Supabase em onAuthStateChange;
+- adiciona timeout e recuperação da inicialização;
+- remove Service Worker e caches antigos;
+- força HTML atualizado após cada deploy.

@@ -8,6 +8,18 @@ const roleLabels = {
   consultor: 'Consultor',
 };
 
+
+const AUTH_TIMEOUT_MS = 12000;
+const PROFILE_TIMEOUT_MS = 15000;
+
+export function withTimeout(promise, timeoutMs, message) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timeoutId));
+}
+
 const walletLabels = {
   recuperacao: WALLET_LABELS.recovery,
   cobre_ouro: WALLET_LABELS.standard,
@@ -50,7 +62,11 @@ export async function changePassword(password) {
 
 export async function getCurrentSession() {
   if (!supabase) return null;
-  const { data, error } = await supabase.auth.getSession();
+  const { data, error } = await withTimeout(
+    supabase.auth.getSession(),
+    AUTH_TIMEOUT_MS,
+    'A verificação da sessão demorou mais que o esperado.',
+  );
   if (error) throw error;
   return data.session;
 }
@@ -64,15 +80,19 @@ export function onAuthStateChange(callback) {
 export async function loadAppUser(authUser) {
   if (!authUser || !supabase) return null;
 
-  const [{ data: profile, error: profileError }, { data: membership, error: membershipError }] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
-    supabase
-      .from('memberships')
-      .select('*')
-      .eq('user_id', authUser.id)
-      .eq('active', true)
-      .maybeSingle(),
-  ]);
+  const [{ data: profile, error: profileError }, { data: membership, error: membershipError }] = await withTimeout(
+    Promise.all([
+      supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
+      supabase
+        .from('memberships')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .eq('active', true)
+        .maybeSingle(),
+    ]),
+    PROFILE_TIMEOUT_MS,
+    'O perfil demorou mais que o esperado para carregar.',
+  );
 
   if (profileError) throw profileError;
   if (membershipError) throw membershipError;

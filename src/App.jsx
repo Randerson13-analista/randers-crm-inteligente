@@ -27,7 +27,7 @@ import { loadState, saveState } from './services/storage';
 import { scoreRevendedor } from './services/intelligence';
 import { distributeWallets } from './services/assignment';
 import { userCanHandleReseller } from './domain/portfolio';
-import { getCurrentSession, loadAppUser, onAuthStateChange, signOut } from './services/auth';
+import { getCurrentSession, loadAppUser, onAuthStateChange, signOut, withTimeout } from './services/auth';
 import { inviteCollaborator, listOrganizationUsers, updateMembership } from './services/team';
 import { openWhatsApp, renderMessage } from './services/whatsapp';
 import {
@@ -77,6 +77,8 @@ export default function App() {
   const [teamLoading, setTeamLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [bootNonce, setBootNonce] = useState(0);
+  const [startupTimedOut, setStartupTimedOut] = useState(false);
   const [toast, setToast] = useState('');
   const [showNotifs, setShowNotifs] = useState(false);
   const [selectedRev, setSelectedRev] = useState(null);
@@ -91,46 +93,44 @@ export default function App() {
   const hydrate = async appUser => {
     setDataLoading(true);
     try {
-      const team = await listOrganizationUsers(appUser.organizationId);
+      const team = await withTimeout(
+        listOrganizationUsers(appUser.organizationId),
+        15000,
+        'A equipe demorou mais que o esperado para carregar.',
+      );
       const isManager = ['Administrador', 'Gerente'].includes(appUser.cargo);
-      const crmData = await loadCrmData(appUser.organizationId, team, isManager);
+      const crmData = await withTimeout(
+        loadCrmData(appUser.organizationId, team, isManager),
+        30000,
+        'Os dados do CRM demoraram mais que o esperado para carregar.',
+      );
       setState(current => ({ ...current, ...crmData, users: team }));
     } finally {
       setDataLoading(false);
     }
   };
 
-  const authenticate = async authUser => {
-    setAuthLoading(true);
-    try {
-      const appUser = await loadAppUser(authUser);
-      setUser(appUser);
-      setAuthError('');
-      if (!appUser.mustChangePassword) {
-        await hydrate(appUser);
-        await logAudit(appUser.organizationId, appUser.id, 'Entrou no sistema.');
-        notify(`Bem-vindo, ${appUser.nome}!`);
-      }
-    } catch (error) {
-      setAuthError(error.message || 'Não foi possível carregar seu perfil.');
-      throw error;
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   useEffect(() => {
     let mounted = true;
+    let requestId = 0;
+
     const applySession = async (session, event = '') => {
+      const currentRequest = ++requestId;
       if (!mounted) return;
+      setAuthLoading(true);
+      setStartupTimedOut(false);
+
       if (!session?.user) {
         setUser(null);
+        setPasswordRecovery(false);
+        setDataLoading(false);
         setAuthLoading(false);
         return;
       }
+
       try {
         const appUser = await loadAppUser(session.user);
-        if (!mounted) return;
+        if (!mounted || currentRequest !== requestId) return;
         const requiresPassword = appUser.mustChangePassword || event === 'PASSWORD_RECOVERY';
         const nextUser = requiresPassword ? { ...appUser, mustChangePassword: true } : appUser;
         setUser(nextUser);
@@ -138,25 +138,55 @@ export default function App() {
         setAuthError('');
         if (!requiresPassword) await hydrate(nextUser);
       } catch (error) {
-        if (!mounted) return;
+        if (!mounted || currentRequest !== requestId) return;
         setUser(null);
+        setDataLoading(false);
         setAuthError(error.message || 'Não foi possível carregar seu perfil.');
       } finally {
-        if (mounted) setAuthLoading(false);
+        if (mounted && currentRequest === requestId) setAuthLoading(false);
       }
     };
-    getCurrentSession().then(applySession).catch(error => {
-      if (mounted) {
+
+    const bootstrap = async () => {
+      try {
+        const session = await getCurrentSession();
+        await applySession(session, 'INITIAL_SESSION');
+      } catch (error) {
+        if (!mounted) return;
+        setUser(null);
+        setDataLoading(false);
         setAuthError(error.message || 'Falha ao verificar a sessão.');
         setAuthLoading(false);
       }
+    };
+
+    void bootstrap();
+
+    // Nunca faça consultas ao Supabase dentro do callback síncrono de autenticação.
+    // O adiamento evita o bloqueio interno de sessão que fazia o CRM carregar para sempre.
+    const subscription = onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
+      window.setTimeout(() => {
+        if (mounted) void applySession(session, event);
+      }, 0);
     });
-    const subscription = onAuthStateChange((event, session) => applySession(session, event));
+
     return () => {
       mounted = false;
+      requestId += 1;
       subscription?.unsubscribe?.();
     };
-  }, []);
+  }, [bootNonce]);
+
+  useEffect(() => {
+    const isStarting = authLoading || Boolean(user && dataLoading);
+    if (!isStarting) {
+      setStartupTimedOut(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setStartupTimedOut(true), 25000);
+    return () => window.clearTimeout(timer);
+  }, [authLoading, dataLoading, user]);
 
   const refreshAll = async () => {
     if (!user) return;
@@ -336,12 +366,36 @@ export default function App() {
     }
   };
 
+  if (startupTimedOut) {
+    return <main className="fatal-error-screen startup-recovery-screen">
+      <img src="/brain.svg" alt="Randers CRM"/>
+      <small>Recuperação automática</small>
+      <h1>O acesso demorou mais que o esperado</h1>
+      <p>O CRM interrompeu o carregamento para não ficar preso. Seus dados permanecem protegidos no Supabase.</p>
+      {authError && <details open><summary>Mensagem</summary><code>{authError}</code></details>}
+      <button className="primary" onClick={() => {
+        setStartupTimedOut(false);
+        setAuthError('');
+        setAuthLoading(true);
+        setDataLoading(false);
+        setBootNonce(value => value + 1);
+      }}>Tentar novamente</button>
+      <button className="secondary" onClick={async () => {
+        try { await signOut(); } catch { /* sessão local pode já estar inválida */ }
+        setUser(null);
+        setAuthLoading(false);
+        setDataLoading(false);
+        setStartupTimedOut(false);
+      }}>Voltar para o login</button>
+    </main>;
+  }
+
   if (authLoading || (user && dataLoading)) {
-    return <div className="auth-loading"><img src="/brain.svg" alt="Randers CRM"/><strong>Carregando seu acesso...</strong></div>;
+    return <div className="auth-loading"><img src="/brain.svg" alt="Randers CRM"/><strong>Carregando seu acesso...</strong><small>Isso deve levar apenas alguns segundos.</small></div>;
   }
 
   if (!user) {
-    return <><SupabaseLogin onAuthenticated={authenticate}/>{authError && <div className="global-auth-error">{authError}</div>}</>;
+    return <><SupabaseLogin onAuthenticated={() => setAuthLoading(true)}/>{authError && <div className="global-auth-error">{authError}</div>}</>;
   }
 
   if (user.mustChangePassword) {

@@ -18,7 +18,11 @@ export default class AppErrorBoundary extends React.Component {
     try {
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map(registration => registration.update()));
+        await Promise.all(registrations.map(registration => registration.unregister()));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(key => key.startsWith('randerscrm-')).map(key => caches.delete(key)));
       }
     } finally {
       window.location.reload();

@@ -1,7 +1,7 @@
 {
   "name": "randers-crm",
   "private": true,
-  "version": "10.0.3-password-setup",
+  "version": "10.0.4-session-cache-fix",
   "type": "module",
   "scripts": {
     "dev": "vite",
