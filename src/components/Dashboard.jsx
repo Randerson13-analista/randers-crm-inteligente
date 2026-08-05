@@ -1,6 +1,12 @@
 import React, { useMemo } from 'react';
 import { CalendarDays, Clock3, MessageCircle, RotateCcw, Target, TrendingUp, Trophy, Users } from 'lucide-react';
-import { ACTIVITY_SEGMENTS, RECOVERY_GROUPS, VIP_ACTIVITY_SEGMENTS } from '../domain/portfolio';
+import {
+  ACTIVITY_CYCLE_STATUSES,
+  ACTIVITY_SEGMENTS,
+  RECOVERY_GROUPS,
+  VIP_ACTIVITY_SEGMENTS,
+  activityCycleStatus,
+} from '../domain/portfolio';
 
 const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
 
@@ -38,6 +44,11 @@ export default function Dashboard({ revendedores = [], history = [], agenda = []
     .filter(([, value]) => value > 0)
     .sort((a, b) => b[1] - a[1]);
 
+  const byCycleStatus = ACTIVITY_CYCLE_STATUSES.map(status => [
+    status,
+    revendedores.filter(item => item.base === 'Atividade' && activityCycleStatus(item) === status).length,
+  ]);
+
   const recent = [...history].sort((a, b) => String(b.data).localeCompare(String(a.data))).slice(0, 5);
 
   return <section className="module-page dashboard-premium">
@@ -52,6 +63,7 @@ export default function Dashboard({ revendedores = [], history = [], agenda = []
       <article className="panel"><div className="panel-title"><div><small>Fluxos</small><h2>Atividade e Recuperação</h2></div><span>{stats.total} contatos</span></div><div className="bar-list">{byFlow.map(([name, value]) => <div key={name}><div><b>{name}</b><span>{value}</span></div><progress value={value} max={Math.max(stats.total, 1)}/></div>)}</div></article>
       <article className="panel"><div className="panel-title"><div><small>Funil</small><h2>Etapas atuais</h2></div><span>Atualizado agora</span></div><div className="funnel-visual"><div><i style={{ width: `${pct(stats.pendentes, stats.total)}%` }}/><b>Pendentes</b><span>{stats.pendentes}</span></div><div><i style={{ width: `${pct(stats.emContato, stats.total)}%` }}/><b>Em contato</b><span>{stats.emContato}</span></div><div><i style={{ width: `${pct(stats.convertidos, stats.total)}%` }}/><b>Convertidos</b><span>{stats.convertidos}</span></div></div></article>
       <article className="panel"><div className="panel-title"><div><small>Atividade</small><h2>Segmentações</h2></div><span>8 níveis possíveis</span></div><div className="level-cloud">{byLevel.length ? byLevel.map(([name, value]) => <div key={name}><b>{name}</b><span>{value}</span></div>) : <div className="empty">Nenhuma segmentação importada.</div>}</div></article>
+      <article className="panel cycle-status-panel"><div className="panel-title"><div><small>Recência de compra</small><h2>Situação no ciclo</h2></div><span>Ativo a I5</span></div><div className="cycle-status-grid">{byCycleStatus.map(([name, value]) => <div key={name}><b>{name}</b><span>{value}</span></div>)}</div></article>
       <article className="panel"><div className="panel-title"><div><small>Atendimentos</small><h2>Últimas interações</h2></div><Clock3 size={18}/></div><div className="activity-feed">{recent.length === 0 ? <div className="empty">Nenhum atendimento registrado.</div> : recent.map(item => <div key={item.id}><i/><div><b>{item.resultado}</b><span>{item.usuario} · {item.canal}</span></div><small>{new Date(item.data).toLocaleDateString('pt-BR')}</small></div>)}</div></article>
     </div>
   </section>;

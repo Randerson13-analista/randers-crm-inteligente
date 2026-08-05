@@ -1,7 +1,7 @@
 {
   "name": "randers-crm",
   "private": true,
-  "version": "10.0.6-data-complete",
+  "version": "10.0.7-activity-whatsapp",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -13,6 +13,15 @@ export const STANDARD_ACTIVITY_SEGMENTS = ['Cobre', 'Bronze', 'Prata', 'Ouro'];
 export const VIP_ACTIVITY_SEGMENTS = ['Platina', 'Rubi', 'Esmeralda', 'Diamante'];
 export const RECOVERY_GROUPS = ['I6', 'Cessados', 'Intenções'];
 
+export const ACTIVITY_CYCLE_STATUSES = [
+  'Ativo',
+  'Ativo 1',
+  'Ativo 2',
+  'Ativo 3',
+  'Inativo 4',
+  'Inativo 5',
+];
+
 export const WALLET_LABELS = {
   recovery: 'Recuperação',
   standard: 'Atividade · Cobre a Ouro',
@@ -50,6 +59,63 @@ export function canonicalRecoveryGroup(value) {
   const hasI6Token = /(^|[^a-z0-9])i[\s_-]*6([^a-z0-9]|$)/i.test(normalized);
   if (hasI6Token || normalized.includes('inativo 6') || normalized.includes('inatividade 6')) return 'I6';
   return canonicalFrom(value, RECOVERY_GROUPS);
+}
+
+export function canonicalActivityCycleStatus(value) {
+  const normalized = strip(value);
+  if (!normalized) return '';
+  if (/^(ativo|a\s*0|ativo\s*0)$/.test(normalized)) return 'Ativo';
+  if (/^(ativo|a)\s*1$/.test(normalized)) return 'Ativo 1';
+  if (/^(ativo|a)\s*2$/.test(normalized)) return 'Ativo 2';
+  if (/^(ativo|a)\s*3$/.test(normalized)) return 'Ativo 3';
+  if (/^(inativo|i)\s*4$/.test(normalized)) return 'Inativo 4';
+  if (/^(inativo|i)\s*5$/.test(normalized)) return 'Inativo 5';
+  return canonicalFrom(value, ACTIVITY_CYCLE_STATUSES);
+}
+
+function cycleNumberFromText(value) {
+  const normalized = strip(value);
+  if (!normalized) return null;
+  const status = canonicalActivityCycleStatus(normalized);
+  if (status === 'Ativo') return 0;
+  const activityMatch = status.match(/(\d+)/);
+  if (activityMatch) return Number(activityMatch[1]);
+  if (/(^|[^a-z0-9])i\s*6([^a-z0-9]|$)/.test(normalized) || normalized.includes('inativo 6')) return 6;
+  const ceasedMatch = normalized.match(/(?:cessado|inativo|inatividade)\D*(\d+)/);
+  if (ceasedMatch) return Number(ceasedMatch[1]);
+  return null;
+}
+
+export function inactivityCyclesForReseller(reseller = {}) {
+  const metadata = reseller.metadata || {};
+  const candidates = [
+    reseller.ciclosInatividade,
+    reseller.inactivityCycles,
+    reseller.ciclos_inatividade,
+    metadata.ciclosInatividade,
+    metadata.inactivityCycles,
+    metadata.ciclos_inatividade,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate === '' || candidate === null || candidate === undefined) continue;
+    const number = Number(String(candidate).replace(',', '.'));
+    if (Number.isFinite(number) && number >= 0) return Math.floor(number);
+  }
+
+  const textCandidates = [
+    reseller.situacaoCiclo,
+    reseller.statusAtividade,
+    metadata.situacaoCiclo,
+    metadata.statusAtividade,
+    metadata.papelOriginal,
+    reseller.atividadeAtual,
+  ];
+  for (const candidate of textCandidates) {
+    const parsed = cycleNumberFromText(candidate);
+    if (parsed !== null) return parsed;
+  }
+  return null;
 }
 
 export function normalizeResellerClassification(reseller = {}) {
@@ -100,6 +166,35 @@ export function normalizeResellerClassification(reseller = {}) {
   };
 }
 
+export function activityCycleStatus(reseller = {}) {
+  const normalized = normalizeResellerClassification(reseller);
+  if (normalized.base === 'I6') return 'I6';
+  if (normalized.base === 'Cessados') {
+    const cycles = inactivityCyclesForReseller(normalized);
+    return cycles && cycles >= 7 ? `Cessado ${cycles}` : 'Cessado 7+';
+  }
+  if (normalized.base === 'Intenções') return 'Intenção de revenda';
+  if (normalized.base !== 'Atividade') return 'Não informado';
+
+  const cycles = inactivityCyclesForReseller(normalized);
+  if (cycles === 0) return 'Ativo';
+  if (cycles === 1) return 'Ativo 1';
+  if (cycles === 2) return 'Ativo 2';
+  if (cycles === 3) return 'Ativo 3';
+  if (cycles === 4) return 'Inativo 4';
+  if (cycles === 5) return 'Inativo 5';
+  if (cycles === 6) return 'I6';
+  if (cycles !== null && cycles >= 7) return `Cessado ${cycles}`;
+
+  const textual = canonicalActivityCycleStatus(
+    normalized.situacaoCiclo
+      || normalized.statusAtividade
+      || normalized.metadata?.situacaoCiclo
+      || normalized.metadata?.papelOriginal,
+  );
+  return textual || 'Não informado';
+}
+
 export function isActivityReseller(reseller = {}) {
   return normalizeResellerClassification(reseller).base === 'Atividade';
 }
@@ -130,15 +225,15 @@ export function normalizeWalletLabel(value) {
 export function defaultPortfolioForWallet(wallet) {
   const normalized = normalizeWalletLabel(wallet);
   if (normalized === WALLET_LABELS.all) {
-    return { activitySegments: [...ACTIVITY_SEGMENTS], recoveryGroups: [...RECOVERY_GROUPS] };
+    return { activitySegments: [...ACTIVITY_SEGMENTS], recoveryGroups: [...RECOVERY_GROUPS], activityCycleStatuses: [...ACTIVITY_CYCLE_STATUSES] };
   }
   if (normalized === WALLET_LABELS.recovery) {
-    return { activitySegments: [], recoveryGroups: [...RECOVERY_GROUPS] };
+    return { activitySegments: [], recoveryGroups: [...RECOVERY_GROUPS], activityCycleStatuses: [] };
   }
   if (normalized === WALLET_LABELS.vip) {
-    return { activitySegments: [...VIP_ACTIVITY_SEGMENTS], recoveryGroups: [] };
+    return { activitySegments: [...VIP_ACTIVITY_SEGMENTS], recoveryGroups: [], activityCycleStatuses: [...ACTIVITY_CYCLE_STATUSES] };
   }
-  return { activitySegments: [...STANDARD_ACTIVITY_SEGMENTS], recoveryGroups: [] };
+  return { activitySegments: [...STANDARD_ACTIVITY_SEGMENTS], recoveryGroups: [], activityCycleStatuses: [...ACTIVITY_CYCLE_STATUSES] };
 }
 
 export function normalizePortfolioRules(user = {}) {
@@ -149,10 +244,14 @@ export function normalizePortfolioRules(user = {}) {
   const recoveryGroups = Array.isArray(user.recoveryGroups) && user.recoveryGroups.length
     ? user.recoveryGroups.map(canonicalRecoveryGroup).filter(Boolean)
     : legacy.recoveryGroups;
+  const activityCycleStatuses = Array.isArray(user.activityCycleStatuses)
+    ? user.activityCycleStatuses.map(canonicalActivityCycleStatus).filter(Boolean)
+    : legacy.activityCycleStatuses;
 
   return {
     activitySegments: [...new Set(activitySegments)],
     recoveryGroups: [...new Set(recoveryGroups)],
+    activityCycleStatuses: [...new Set(activityCycleStatuses)],
   };
 }
 
@@ -162,7 +261,13 @@ export function userCanHandleReseller(user, reseller) {
   const rules = normalizePortfolioRules(user);
   const normalized = normalizeResellerClassification(reseller);
   if (RECOVERY_GROUPS.includes(normalized.base)) return rules.recoveryGroups.includes(normalized.base);
-  if (normalized.base === 'Atividade') return rules.activitySegments.includes(normalized.nivel);
+  if (normalized.base === 'Atividade') {
+    const status = activityCycleStatus(normalized);
+    const cycleAllowed = status === 'Não informado'
+      ? rules.activityCycleStatuses.length === ACTIVITY_CYCLE_STATUSES.length
+      : rules.activityCycleStatuses.includes(status);
+    return rules.activitySegments.includes(normalized.nivel) && cycleAllowed;
+  }
   return false;
 }
 
@@ -170,7 +275,11 @@ export function summarizePortfolio(user = {}) {
   if (['Administrador', 'Gerente'].includes(user.cargo) || normalizeWalletLabel(user.carteira) === WALLET_LABELS.all) return WALLET_LABELS.all;
   const rules = normalizePortfolioRules(user);
   if (rules.recoveryGroups.length && !rules.activitySegments.length) return `Recuperação · ${rules.recoveryGroups.join(', ')}`;
-  if (rules.activitySegments.length && !rules.recoveryGroups.length) return `Atividade · ${rules.activitySegments.join(', ')}`;
+  if (rules.activitySegments.length && !rules.recoveryGroups.length) {
+    const allCycleStatuses = rules.activityCycleStatuses.length === ACTIVITY_CYCLE_STATUSES.length;
+    const cycleLabel = allCycleStatuses ? 'Ativo a I5' : rules.activityCycleStatuses.join(', ');
+    return `Atividade · ${rules.activitySegments.join(', ')} · ${cycleLabel || 'sem situação selecionada'}`;
+  }
   if (rules.activitySegments.length || rules.recoveryGroups.length) return WALLET_LABELS.custom;
   return 'Sem carteira';
 }
@@ -189,6 +298,7 @@ export function classificationLabel(reseller = {}) {
 export function campaignGroupMatches(reseller, group) {
   const normalized = normalizeResellerClassification(reseller);
   if (group === 'Todos' || normalizeWalletLabel(group) === WALLET_LABELS.all) return true;
+  if (ACTIVITY_CYCLE_STATUSES.includes(group)) return normalized.base === 'Atividade' && activityCycleStatus(normalized) === group;
   if (ACTIVITY_SEGMENTS.includes(group)) return normalized.nivel === group;
   if (RECOVERY_GROUPS.includes(group)) return normalized.base === group;
   return walletForReseller(normalized) === normalizeWalletLabel(group);

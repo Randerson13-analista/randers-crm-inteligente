@@ -1,28 +1,34 @@
-# Supabase — atualização obrigatória
+# Supabase — atualização obrigatória v10.7
 
-## Banco existente
+## 1. Banco existente
 
 No SQL Editor, execute uma vez:
 
 ```text
-supabase/migrations/20260805_finish_core.sql
+supabase/migrations/20260805_activity_cycle_statuses.sql
 ```
 
-A migração é idempotente e adiciona:
+A migração adiciona `memberships.activity_cycle_statuses`, preserva o acesso atual e cria o índice necessário.
 
-- configurações da organização;
-- segmentações detalhadas nas associações;
-- correção das classificações legadas;
-- índices;
-- políticas de perfil e campanhas;
-- sincronização do status de confirmação do e-mail.
+Não é necessário reimportar as planilhas. A situação no ciclo já está salva nos metadados dos revendedores importados.
 
-## Convite de colaboradores
+## 2. Convite de colaboradores
 
-Publique novamente a função:
+Publique novamente:
 
 ```text
 supabase/functions/invite-collaborator/index.ts
 ```
 
-A função usa variáveis secretas gerenciadas automaticamente pelo Supabase. Nunca coloque a `service_role` no frontend ou na Vercel.
+A função passa a salvar também as situações de Atividade permitidas para o novo colaborador.
+
+A função usa o cliente administrativo no ambiente do Supabase. Nunca coloque a `service_role` no frontend ou nas variáveis públicas da Vercel.
+
+## 3. Depois do deploy
+
+Abra **Administração**:
+
+1. escolha segmentos e situações para cada consultor;
+2. salve a carteira;
+3. clique em **Redistribuir agora**;
+4. confira o total sem responsável.

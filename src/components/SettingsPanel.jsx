@@ -6,8 +6,14 @@ const templateLabels = {
   recuperacao_i6: 'Recuperação · I6',
   recuperacao_cessados: 'Recuperação · Cessados',
   intencoes: 'Recuperação · Intenções',
-  atividade_padrao: 'Atividade · Cobre, Bronze, Prata e Ouro',
-  atividade_vip: 'Atividade · Platina, Rubi, Esmeralda e Diamante',
+  atividade_ativo: 'Atividade · Ativo (comprou no ciclo)',
+  atividade_ativo_1: 'Atividade · Ativo 1',
+  atividade_ativo_2: 'Atividade · Ativo 2',
+  atividade_ativo_3: 'Atividade · Ativo 3',
+  atividade_inativo_4: 'Atividade · Inativo 4',
+  atividade_inativo_5: 'Atividade · Inativo 5',
+  atividade_padrao: 'Atividade · mensagem geral',
+  atividade_vip: 'Atividade · mensagem premium',
 };
 
 const buildSettings = organization => ({
@@ -44,7 +50,7 @@ export default function SettingsPanel({ organization, onSave }) {
 
       <div className="settings-section">
         <h3>Mensagens padrão do WhatsApp</h3>
-        <p>Variáveis permitidas: {'{nome}'}, {'{cidade}'}, {'{nivel}'}, {'{base}'}, {'{atividade}'}.</p>
+        <p>Variáveis permitidas: {'{nome}'}, {'{cidade}'}, {'{nivel}'}, {'{base}'}, {'{atividade}'}, {'{situacao_ciclo}'}, {'{responsavel}'}.</p>
         {Object.entries(templateLabels).map(([key, label]) => <label key={key}>{label}<textarea rows="3" value={settings.whatsappTemplates[key] || ''} onChange={event => setSettings({ ...settings, whatsappTemplates: { ...settings.whatsappTemplates, [key]: event.target.value } })}/></label>)}
       </div>
 

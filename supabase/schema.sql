@@ -65,6 +65,7 @@ create table if not exists public.memberships (
   wallet public.wallet_group not null default 'recuperacao',
   activity_segments text[] not null default '{}'::text[],
   recovery_groups text[] not null default '{}'::text[],
+  activity_cycle_statuses text[] not null default array['Ativo','Ativo 1','Ativo 2','Ativo 3','Inativo 4','Inativo 5']::text[],
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

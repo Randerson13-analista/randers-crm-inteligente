@@ -4,6 +4,7 @@ import AvatarPreview from './AvatarPreview';
 import { defaultAvatar } from '../data/avatarOptions';
 import { assignmentSummary } from '../services/assignment';
 import {
+  ACTIVITY_CYCLE_STATUSES,
   ACTIVITY_SEGMENTS,
   RECOVERY_GROUPS,
   STANDARD_ACTIVITY_SEGMENTS,
@@ -14,33 +15,41 @@ import {
 
 const roles = ['Consultor', 'Gerente', 'Administrador'];
 const presets = [
-  { id: 'recovery', label: 'Recuperação', activitySegments: [], recoveryGroups: RECOVERY_GROUPS },
-  { id: 'standard', label: 'Atividade · Cobre a Ouro', activitySegments: STANDARD_ACTIVITY_SEGMENTS, recoveryGroups: [] },
-  { id: 'premium', label: 'Atividade · Platina a Diamante', activitySegments: VIP_ACTIVITY_SEGMENTS, recoveryGroups: [] },
-  { id: 'all', label: 'Todas', activitySegments: ACTIVITY_SEGMENTS, recoveryGroups: RECOVERY_GROUPS },
-  { id: 'custom', label: 'Personalizada', activitySegments: [], recoveryGroups: [] },
+  { id: 'recovery', label: 'Recuperação', activitySegments: [], recoveryGroups: RECOVERY_GROUPS, activityCycleStatuses: [] },
+  { id: 'standard', label: 'Atividade · Cobre a Ouro', activitySegments: STANDARD_ACTIVITY_SEGMENTS, recoveryGroups: [], activityCycleStatuses: ACTIVITY_CYCLE_STATUSES },
+  { id: 'premium', label: 'Atividade · Platina a Diamante', activitySegments: VIP_ACTIVITY_SEGMENTS, recoveryGroups: [], activityCycleStatuses: ACTIVITY_CYCLE_STATUSES },
+  { id: 'all', label: 'Todas', activitySegments: ACTIVITY_SEGMENTS, recoveryGroups: RECOVERY_GROUPS, activityCycleStatuses: ACTIVITY_CYCLE_STATUSES },
+  { id: 'custom', label: 'Personalizada', activitySegments: [], recoveryGroups: [], activityCycleStatuses: [] },
 ];
 
 const toggle = (items, value) => items.includes(value) ? items.filter(item => item !== value) : [...items, value];
 const sameSet = (left = [], right = []) => left.length === right.length && left.every(item => right.includes(item));
-const presetFor = (activitySegments = [], recoveryGroups = []) => presets.find(preset =>
+const presetFor = (activitySegments = [], recoveryGroups = [], activityCycleStatuses = []) => presets.find(preset =>
   preset.id !== 'custom'
   && sameSet(activitySegments, preset.activitySegments)
-  && sameSet(recoveryGroups, preset.recoveryGroups))?.id || 'custom';
+  && sameSet(recoveryGroups, preset.recoveryGroups)
+  && sameSet(activityCycleStatuses, preset.activityCycleStatuses))?.id || 'custom';
 
-function PortfolioFields({ activitySegments, recoveryGroups, onChange, disabled = false }) {
+function PortfolioFields({ activitySegments, recoveryGroups, activityCycleStatuses, onChange, disabled = false }) {
   return <div className="portfolio-fields">
     <div className="portfolio-group">
       <div><b>Segmentações dentro de Atividade</b><small>Atividade não é uma carteira separada dos níveis: ela contém as oito segmentações abaixo.</small></div>
       <div className="checkbox-grid">{ACTIVITY_SEGMENTS.map(segment => <label className={activitySegments.includes(segment) ? 'selected' : ''} key={segment}>
-        <input type="checkbox" disabled={disabled} checked={activitySegments.includes(segment)} onChange={() => onChange({ activitySegments: toggle(activitySegments, segment), recoveryGroups })}/>
+        <input type="checkbox" disabled={disabled} checked={activitySegments.includes(segment)} onChange={() => onChange({ activitySegments: toggle(activitySegments, segment), recoveryGroups, activityCycleStatuses })}/>
         <span>{activitySegments.includes(segment) && <CheckCircle2 size={14}/>} {segment}</span>
+      </label>)}</div>
+    </div>
+    <div className="portfolio-group">
+      <div><b>Situações dentro de Atividade</b><small>Permite separar Ativo, A1, A2, A3, I4 e I5 entre colaboradores, independentemente do segmento.</small></div>
+      <div className="checkbox-grid cycle-rule-grid">{ACTIVITY_CYCLE_STATUSES.map(status => <label className={activityCycleStatuses.includes(status) ? 'selected' : ''} key={status}>
+        <input type="checkbox" disabled={disabled} checked={activityCycleStatuses.includes(status)} onChange={() => onChange({ activitySegments, recoveryGroups, activityCycleStatuses: toggle(activityCycleStatuses, status) })}/>
+        <span>{activityCycleStatuses.includes(status) && <CheckCircle2 size={14}/>} {status}</span>
       </label>)}</div>
     </div>
     <div className="portfolio-group">
       <div><b>Grupos de Recuperação</b><small>I6, Cessados e Intenções continuam como fluxos operacionais de recuperação.</small></div>
       <div className="checkbox-grid recovery-grid">{RECOVERY_GROUPS.map(group => <label className={recoveryGroups.includes(group) ? 'selected' : ''} key={group}>
-        <input type="checkbox" disabled={disabled} checked={recoveryGroups.includes(group)} onChange={() => onChange({ activitySegments, recoveryGroups: toggle(recoveryGroups, group) })}/>
+        <input type="checkbox" disabled={disabled} checked={recoveryGroups.includes(group)} onChange={() => onChange({ activitySegments, recoveryGroups: toggle(recoveryGroups, group), activityCycleStatuses })}/>
         <span>{recoveryGroups.includes(group) && <CheckCircle2 size={14}/>} {group}</span>
       </label>)}</div>
     </div>
@@ -51,6 +60,7 @@ function UserPortfolioEditor({ user, onUpdate }) {
   const [cargo, setCargo] = useState(user.cargo);
   const [activitySegments, setActivitySegments] = useState(user.activitySegments || []);
   const [recoveryGroups, setRecoveryGroups] = useState(user.recoveryGroups || []);
+  const [activityCycleStatuses, setActivityCycleStatuses] = useState(user.activityCycleStatuses || ACTIVITY_CYCLE_STATUSES);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
@@ -58,6 +68,7 @@ function UserPortfolioEditor({ user, onUpdate }) {
     setCargo(user.cargo);
     setActivitySegments(user.activitySegments || []);
     setRecoveryGroups(user.recoveryGroups || []);
+    setActivityCycleStatuses(user.activityCycleStatuses || ACTIVITY_CYCLE_STATUSES);
   }, [user]);
 
   const applyPreset = id => {
@@ -65,13 +76,14 @@ function UserPortfolioEditor({ user, onUpdate }) {
     if (!preset || id === 'custom') return;
     setActivitySegments([...preset.activitySegments]);
     setRecoveryGroups([...preset.recoveryGroups]);
+    setActivityCycleStatuses([...preset.activityCycleStatuses]);
   };
 
   const save = async () => {
     setSaving(true);
     setSaveError('');
     try {
-      await onUpdate(user.id, { cargo, activitySegments, recoveryGroups });
+      await onUpdate(user.id, { cargo, activitySegments, recoveryGroups, activityCycleStatuses });
     } catch (error) {
       setSaveError(error.message || 'Não foi possível salvar a carteira.');
     } finally {
@@ -79,7 +91,7 @@ function UserPortfolioEditor({ user, onUpdate }) {
     }
   };
 
-  const display = summarizePortfolio({ ...user, cargo, activitySegments, recoveryGroups });
+  const display = summarizePortfolio({ ...user, cargo, activitySegments, recoveryGroups, activityCycleStatuses });
   return <details className="portfolio-editor">
     <summary><span>{display}</span><small>Configurar carteira</small></summary>
     <div className="portfolio-editor-body">
@@ -90,15 +102,17 @@ function UserPortfolioEditor({ user, onUpdate }) {
           if (['Administrador', 'Gerente'].includes(next)) {
             setActivitySegments([...ACTIVITY_SEGMENTS]);
             setRecoveryGroups([...RECOVERY_GROUPS]);
+            setActivityCycleStatuses([...ACTIVITY_CYCLE_STATUSES]);
           }
         }}>{roles.map(role => <option key={role}>{role}</option>)}</select></label>
-        <label>Predefinição<select value={presetFor(activitySegments, recoveryGroups)} onChange={event => applyPreset(event.target.value)}>
+        <label>Predefinição<select value={presetFor(activitySegments, recoveryGroups, activityCycleStatuses)} onChange={event => applyPreset(event.target.value)}>
           {presets.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
         </select></label>
       </div>
-      <PortfolioFields activitySegments={activitySegments} recoveryGroups={recoveryGroups} onChange={next => {
+      <PortfolioFields activitySegments={activitySegments} recoveryGroups={recoveryGroups} activityCycleStatuses={activityCycleStatuses} onChange={next => {
         setActivitySegments(next.activitySegments);
         setRecoveryGroups(next.recoveryGroups);
+        setActivityCycleStatuses(next.activityCycleStatuses);
       }} disabled={['Administrador', 'Gerente'].includes(cargo)}/>
       {saveError && <div className="form-error">{saveError}</div>}
       <button className="primary compact-button" onClick={save} disabled={saving}><Save size={16}/>{saving ? 'Salvando...' : 'Salvar carteira'}</button>
@@ -115,6 +129,7 @@ export default function Admin({ users, revendedores = [], onInvite, onUpdate, on
     carteira: WALLET_LABELS.recovery,
     activitySegments: [...defaultPreset.activitySegments],
     recoveryGroups: [...defaultPreset.recoveryGroups],
+    activityCycleStatuses: [...defaultPreset.activityCycleStatuses],
   });
   const [submitting, setSubmitting] = useState(false);
   const [distributing, setDistributing] = useState(false);
@@ -130,6 +145,7 @@ export default function Admin({ users, revendedores = [], onInvite, onUpdate, on
       carteira: preset.label,
       activitySegments: [...preset.activitySegments],
       recoveryGroups: [...preset.recoveryGroups],
+      activityCycleStatuses: [...preset.activityCycleStatuses],
     }));
   };
 
@@ -141,13 +157,16 @@ export default function Admin({ users, revendedores = [], onInvite, onUpdate, on
     if (form.cargo === 'Consultor' && !form.activitySegments.length && !form.recoveryGroups.length) {
       return setError('Selecione ao menos uma segmentação da Atividade ou um grupo de Recuperação.');
     }
+    if (form.cargo === 'Consultor' && form.activitySegments.length && !form.activityCycleStatuses.length) {
+      return setError('Selecione ao menos uma situação de Atividade: Ativo, A1, A2, A3, I4 ou I5.');
+    }
     setSubmitting(true);
     try {
       const result = await onInvite(form);
       setInviteResult(result || null);
       setForm({
         nome: '', email: '', cargo: 'Consultor', carteira: WALLET_LABELS.recovery,
-        activitySegments: [], recoveryGroups: [...RECOVERY_GROUPS],
+        activitySegments: [], recoveryGroups: [...RECOVERY_GROUPS], activityCycleStatuses: [],
       });
     } catch (exception) {
       setError(exception.message || 'Não foi possível enviar o convite.');
@@ -173,14 +192,14 @@ export default function Admin({ users, revendedores = [], onInvite, onUpdate, on
             setForm(current => ({
               ...current,
               cargo,
-              ...(cargo === 'Consultor' ? {} : { activitySegments: [...ACTIVITY_SEGMENTS], recoveryGroups: [...RECOVERY_GROUPS], carteira: WALLET_LABELS.all }),
+              ...(cargo === 'Consultor' ? {} : { activitySegments: [...ACTIVITY_SEGMENTS], recoveryGroups: [...RECOVERY_GROUPS], activityCycleStatuses: [...ACTIVITY_CYCLE_STATUSES], carteira: WALLET_LABELS.all }),
             }));
           }}>{roles.map(role => <option key={role}>{role}</option>)}</select></label>
-          <label>Predefinição<select value={presetFor(form.activitySegments, form.recoveryGroups)} onChange={event => setPreset(event.target.value)}>
+          <label>Predefinição<select value={presetFor(form.activitySegments, form.recoveryGroups, form.activityCycleStatuses)} onChange={event => setPreset(event.target.value)}>
             {presets.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select></label>
         </div>
-        <PortfolioFields activitySegments={form.activitySegments} recoveryGroups={form.recoveryGroups} onChange={next => setForm({ ...form, ...next, carteira: WALLET_LABELS.custom })} disabled={form.cargo !== 'Consultor'}/>
+        <PortfolioFields activitySegments={form.activitySegments} recoveryGroups={form.recoveryGroups} activityCycleStatuses={form.activityCycleStatuses} onChange={next => setForm({ ...form, ...next, carteira: WALLET_LABELS.custom })} disabled={form.cargo !== 'Consultor'}/>
         {error && <div className="form-error">{error}</div>}
         {inviteResult?.delivery === 'manual_link' && inviteResult.inviteLink && <div className="invite-manual-result">
           <b>Convite criado sem envio automático</b>
@@ -209,7 +228,7 @@ export default function Admin({ users, revendedores = [], onInvite, onUpdate, on
 
     <article className="panel assignment-panel">
       <div className="panel-title">
-        <div><small>Distribuição persistida</small><h2>Carteiras dos consultores</h2><p>A distribuição usa as segmentações selecionadas dentro de Atividade e os grupos de Recuperação, sem duplicar revendedores.</p></div>
+        <div><small>Distribuição persistida</small><h2>Carteiras dos consultores</h2><p>A distribuição combina segmentação, situação no ciclo (Ativo a I5) e grupos de Recuperação, sem duplicar revendedores.</p></div>
         <button className="primary" onClick={distribute} disabled={distributing}><RefreshCw size={17}/>{distributing ? 'Distribuindo...' : 'Redistribuir agora'}</button>
       </div>
       <div className="assignment-summary">{summary.map(item => <div key={item.id}>

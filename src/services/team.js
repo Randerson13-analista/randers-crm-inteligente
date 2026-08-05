@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import {
+  ACTIVITY_CYCLE_STATUSES,
   ACTIVITY_SEGMENTS,
   RECOVERY_GROUPS,
   STANDARD_ACTIVITY_SEGMENTS,
@@ -28,6 +29,9 @@ const roleValues = {
   Gerente: 'gerente',
   Consultor: 'consultor',
 };
+
+
+const uniqueAllowed = (values, allowed) => [...new Set((Array.isArray(values) ? values : []).filter(value => allowed.includes(value)))];
 
 const walletValues = {
   [WALLET_LABELS.recovery]: 'recuperacao',
@@ -79,6 +83,9 @@ export async function listOrganizationUsers(organizationId) {
     const recoveryGroups = Array.isArray(membership.recovery_groups)
       ? membership.recovery_groups
       : defaults.recoveryGroups;
+    const activityCycleStatuses = Array.isArray(membership.activity_cycle_statuses)
+      ? membership.activity_cycle_statuses
+      : defaults.activityCycleStatuses;
     const user = {
       id: membership.user_id,
       membershipId: membership.id,
@@ -92,6 +99,7 @@ export async function listOrganizationUsers(organizationId) {
       carteira: legacyWallet,
       activitySegments,
       recoveryGroups,
+      activityCycleStatuses,
       ativo: membership.active,
       emailConfirmed: Boolean(profile.email_confirmed),
       mustChangePassword: Boolean(profile.must_change_password),
@@ -112,16 +120,18 @@ export async function updateMembership(userId, patch, organizationId) {
   if (cargo) membershipPatch.role = roleValues[cargo] || cargo;
   if (typeof patch.ativo === 'boolean') membershipPatch.active = patch.ativo;
 
-  if ('activitySegments' in patch) membershipPatch.activity_segments = [...new Set(patch.activitySegments || [])];
-  if ('recoveryGroups' in patch) membershipPatch.recovery_groups = [...new Set(patch.recoveryGroups || [])];
+  if ('activitySegments' in patch) membershipPatch.activity_segments = uniqueAllowed(patch.activitySegments, ACTIVITY_SEGMENTS);
+  if ('recoveryGroups' in patch) membershipPatch.recovery_groups = uniqueAllowed(patch.recoveryGroups, RECOVERY_GROUPS);
+  if ('activityCycleStatuses' in patch) membershipPatch.activity_cycle_statuses = uniqueAllowed(patch.activityCycleStatuses, ACTIVITY_CYCLE_STATUSES);
 
-  if (patch.carteira && !('activitySegments' in patch) && !('recoveryGroups' in patch)) {
+  if (patch.carteira && !('activitySegments' in patch) && !('recoveryGroups' in patch) && !('activityCycleStatuses' in patch)) {
     const normalizedWallet = normalizeWalletLabel(patch.carteira);
     const defaults = defaultPortfolioForWallet(normalizedWallet);
     membershipPatch.wallet = walletValues[normalizedWallet] || 'recuperacao';
     membershipPatch.activity_segments = defaults.activitySegments;
     membershipPatch.recovery_groups = defaults.recoveryGroups;
-  } else if ('activitySegments' in patch || 'recoveryGroups' in patch || cargo) {
+    membershipPatch.activity_cycle_statuses = defaults.activityCycleStatuses;
+  } else if ('activitySegments' in patch || 'recoveryGroups' in patch || 'activityCycleStatuses' in patch || cargo) {
     membershipPatch.wallet = legacyWalletForRules(
       patch.activitySegments || [],
       patch.recoveryGroups || [],
@@ -150,7 +160,7 @@ export async function updateMembership(userId, patch, organizationId) {
   }
 }
 
-export async function inviteCollaborator({ organizationId, nome, email, cargo, carteira, activitySegments, recoveryGroups }) {
+export async function inviteCollaborator({ organizationId, nome, email, cargo, carteira, activitySegments, recoveryGroups, activityCycleStatuses }) {
   if (!supabase) throw new Error('Supabase não configurado.');
 
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -162,8 +172,9 @@ export async function inviteCollaborator({ organizationId, nome, email, cargo, c
   if (!supabaseUrl || !publishableKey) throw new Error('As variáveis do Supabase não estão configuradas na Vercel.');
 
   const defaults = defaultPortfolioForWallet(carteira);
-  const selectedActivity = activitySegments?.length ? activitySegments : defaults.activitySegments;
-  const selectedRecovery = recoveryGroups?.length ? recoveryGroups : defaults.recoveryGroups;
+  const selectedActivity = Array.isArray(activitySegments) ? uniqueAllowed(activitySegments, ACTIVITY_SEGMENTS) : defaults.activitySegments;
+  const selectedRecovery = Array.isArray(recoveryGroups) ? uniqueAllowed(recoveryGroups, RECOVERY_GROUPS) : defaults.recoveryGroups;
+  const selectedCycleStatuses = Array.isArray(activityCycleStatuses) ? uniqueAllowed(activityCycleStatuses, ACTIVITY_CYCLE_STATUSES) : defaults.activityCycleStatuses;
   const wallet = legacyWalletForRules(selectedActivity, selectedRecovery, cargo);
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 20000);
@@ -184,6 +195,7 @@ export async function inviteCollaborator({ organizationId, nome, email, cargo, c
         wallet,
         activitySegments: selectedActivity,
         recoveryGroups: selectedRecovery,
+        activityCycleStatuses: selectedCycleStatuses,
         redirectTo: `${window.location.origin}/`,
       }),
       signal: controller.signal,

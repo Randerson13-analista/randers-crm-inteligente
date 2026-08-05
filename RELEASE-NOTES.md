@@ -44,3 +44,22 @@
 - conta segmentações somente entre registros de Atividade;
 - pagina a busca de existentes durante reimportações para evitar duplicidades;
 - permite corrigir a base já importada apenas reimportando as mesmas duas planilhas.
+
+## v10.7 — Ativo a I5 e lotes WhatsApp
+
+- adiciona Ativo, Ativo 1, Ativo 2, Ativo 3, Inativo 4 e Inativo 5 como dimensão separada da segmentação;
+- permite atribuir I4 e I5 a colaboradores específicos;
+- mantém administradores e gerentes com visão completa;
+- torna a redistribuição estável e equilibrada entre consultores elegíveis;
+- adiciona filtros e contagens por situação no ciclo;
+- cria lotes assistidos de WhatsApp com limite técnico de 30 contatos;
+- registra o andamento individual e remove opt-outs dos próximos lotes;
+- corrige a métrica de resposta de campanha (`respondeu`);
+- evita marcar um contato como aberto quando o navegador bloqueia a guia do WhatsApp.
+
+### Ações obrigatórias
+
+1. Executar `supabase/migrations/20260805_activity_cycle_statuses.sql`.
+2. Republicar a Edge Function `invite-collaborator` com o arquivo desta versão.
+3. Publicar o frontend no GitHub/Vercel.
+4. Em Administração, revisar as situações permitidas por colaborador e clicar em **Redistribuir agora**.

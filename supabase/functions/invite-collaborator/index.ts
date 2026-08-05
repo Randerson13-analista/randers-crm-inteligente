@@ -6,6 +6,9 @@ const ACTIVITY_SEGMENTS = new Set([
   "Cobre", "Bronze", "Prata", "Ouro", "Platina", "Rubi", "Esmeralda", "Diamante",
 ]);
 const RECOVERY_GROUPS = new Set(["I6", "Cessados", "Intenções"]);
+const ACTIVITY_CYCLE_STATUSES = new Set([
+  "Ativo", "Ativo 1", "Ativo 2", "Ativo 3", "Inativo 4", "Inativo 5",
+]);
 const EMAIL_FALLBACK_CODES = new Set([
   "email_address_not_authorized",
   "over_email_send_rate_limit",
@@ -122,11 +125,16 @@ export default {
 
       let activitySegments = uniqueAllowed(body.activitySegments, ACTIVITY_SEGMENTS);
       let recoveryGroups = uniqueAllowed(body.recoveryGroups, RECOVERY_GROUPS);
+      let activityCycleStatuses = uniqueAllowed(body.activityCycleStatuses, ACTIVITY_CYCLE_STATUSES);
+      if (activitySegments.length && !Array.isArray(body.activityCycleStatuses)) {
+        activityCycleStatuses = [...ACTIVITY_CYCLE_STATUSES];
+      }
       let wallet = ALLOWED_WALLETS.has(String(body.wallet ?? "")) ? String(body.wallet) : "recuperacao";
 
       if (role === "administrador" || role === "gerente") {
         activitySegments = [...ACTIVITY_SEGMENTS];
         recoveryGroups = [...RECOVERY_GROUPS];
+        activityCycleStatuses = [...ACTIVITY_CYCLE_STATUSES];
         wallet = "todas";
       }
 
@@ -194,6 +202,7 @@ export default {
         wallet,
         activity_segments: activitySegments,
         recovery_groups: recoveryGroups,
+        activity_cycle_statuses: activityCycleStatuses,
         active: true,
       }, { onConflict: "organization_id,user_id" });
       if (membershipInsertError) throw membershipInsertError;

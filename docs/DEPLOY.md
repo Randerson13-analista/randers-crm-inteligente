@@ -1,8 +1,12 @@
-# Publicação
+# Publicação v10.7
 
-## GitHub
+## Ordem correta
 
-Envie o conteúdo do projeto para a raiz do repositório. O `package.json` precisa ficar na raiz.
+1. Supabase SQL Editor: execute `supabase/migrations/20260805_activity_cycle_statuses.sql`.
+2. Supabase Edge Functions: substitua o código de `invite-collaborator` por `supabase/functions/invite-collaborator/index.ts` e publique.
+3. GitHub: envie o conteúdo do projeto para a raiz do repositório.
+4. Vercel: aguarde o deployment de produção ficar `Ready`.
+5. CRM: atualize a página, revise as regras da equipe e redistribua as carteiras.
 
 ## Vercel
 
@@ -15,5 +19,3 @@ Variáveis:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
-
-Depois do deploy, abra a aplicação com atualização forçada (`Ctrl + Shift + R`) se o navegador ainda mostrar uma versão anterior.

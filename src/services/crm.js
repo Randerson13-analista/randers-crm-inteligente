@@ -1,8 +1,10 @@
 import { supabase } from '../lib/supabase';
 import { distributeWallets } from './assignment';
 import { mergeExistingImportState, mergeImportedRows } from './importRules';
-import { DEFAULT_TEMPLATES } from './whatsapp';
+import { DEFAULT_TEMPLATES, MAX_WHATSAPP_BATCH } from './whatsapp';
 import {
+  activityCycleStatus,
+  inactivityCyclesForReseller,
   normalizeResellerClassification,
   normalizeWalletLabel,
 } from '../domain/portfolio';
@@ -105,6 +107,8 @@ export function mapReseller(row) {
     atividade: row.activity || '',
   });
 
+  const metadata = row.metadata || {};
+  const ciclosInatividade = inactivityCyclesForReseller({ ...normalized, metadata });
   return {
     ...normalized,
     status: statusFromDb[row.status] || 'Pendente',
@@ -113,7 +117,9 @@ export function mapReseller(row) {
     responsavelId: row.assigned_user_id || null,
     ultimaCompra: row.last_purchase_at || null,
     ultimoPedidoValor: row.last_order_value || null,
-    metadata: row.metadata || {},
+    metadata,
+    ciclosInatividade,
+    situacaoCiclo: activityCycleStatus({ ...normalized, metadata, ciclosInatividade }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -148,7 +154,7 @@ export async function loadCrmData(organizationId, users, isManager) {
     fetchAllRows(() => supabase.from('tasks').select('*').eq('organization_id', organizationId).order('due_at', { ascending: true }).order('id', { ascending: true })),
     fetchAllRows(() => supabase.from('goals').select('*').eq('organization_id', organizationId).order('period_start', { ascending: false }).order('id', { ascending: false })),
     fetchAllRows(() => supabase.from('campaigns').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).order('id', { ascending: false })),
-    fetchAllRows(() => supabase.from('campaign_recipients').select('campaign_id, reseller_id, status, sent_at, replied_at, converted_at').order('campaign_id', { ascending: true }).order('reseller_id', { ascending: true })),
+    fetchAllRows(() => supabase.from('campaign_recipients').select('id, campaign_id, reseller_id, status, sent_at, replied_at, converted_at').order('campaign_id', { ascending: true }).order('id', { ascending: true })),
     fetchAllRows(() => supabase.from('import_jobs').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).order('id', { ascending: false })),
     supabase.from('organizations').select('*').eq('id', organizationId).single(),
   ];
@@ -221,25 +227,39 @@ export async function loadCrmData(organizationId, users, isManager) {
   });
 
   const recipientMetrics = (recipientsResult.data || []).reduce((result, row) => {
-    result[row.campaign_id] ||= { sent: 0, replies: 0, conversions: 0, pending: 0 };
+    result[row.campaign_id] ||= { sent: 0, replies: 0, conversions: 0, pending: 0, recipients: [] };
     const metrics = result[row.campaign_id];
-    if (row.sent_at || row.status === 'aberto' || row.status === 'enviado') metrics.sent += 1;
-    if (row.replied_at) metrics.replies += 1;
-    if (row.converted_at) metrics.conversions += 1;
-    if (!row.sent_at && row.status === 'pendente') metrics.pending += 1;
+    const sentStatuses = ['aberto', 'enviado', 'respondeu', 'convertido', 'nao_respondeu', 'bloqueado'];
+    if (row.sent_at || sentStatuses.includes(row.status)) metrics.sent += 1;
+    if (row.replied_at || ['respondeu', 'convertido'].includes(row.status)) metrics.replies += 1;
+    if (row.converted_at || row.status === 'convertido') metrics.conversions += 1;
+    if (row.status === 'pendente') metrics.pending += 1;
+    metrics.recipients.push({
+      id: row.id,
+      resellerId: row.reseller_id,
+      status: row.status || 'pendente',
+      sentAt: row.sent_at,
+      repliedAt: row.replied_at,
+      convertedAt: row.converted_at,
+    });
     return result;
   }, {});
 
-  const campaigns = (campaignsResult.data || []).map(row => ({
-    id: row.id,
-    name: row.name,
-    group: row.audience?.group || 'Todos',
-    message: row.message_template,
-    status: row.status,
-    lastRun: row.started_at,
-    createdAt: row.created_at,
-    ...(recipientMetrics[row.id] || { sent: 0, replies: 0, conversions: 0, pending: 0 }),
-  }));
+  const campaigns = (campaignsResult.data || []).map(row => {
+    const metrics = recipientMetrics[row.id] || { sent: 0, replies: 0, conversions: 0, pending: 0, recipients: [] };
+    return {
+      id: row.id,
+      name: row.name,
+      group: row.audience?.group || 'Todos',
+      audience: row.audience || { group: 'Todos' },
+      message: row.message_template,
+      status: row.status,
+      lastRun: row.started_at,
+      createdAt: row.created_at,
+      total: metrics.recipients.length,
+      ...metrics,
+    };
+  });
 
   const imports = (importsResult.data || []).map(row => ({
     id: row.id,
@@ -319,6 +339,15 @@ export async function updateReseller(id, patch) {
     dbPatch.activity = normalized.nivel || null;
   }
   if ('bloqueado' in patch) dbPatch.blocked = Boolean(patch.bloqueado);
+  if ('metadata' in patch) dbPatch.metadata = patch.metadata || {};
+  if ('ciclosInatividade' in patch) {
+    dbPatch.metadata = {
+      ...(patch.metadata || {}),
+      ciclosInatividade: patch.ciclosInatividade === '' || patch.ciclosInatividade === null
+        ? null
+        : Number(patch.ciclosInatividade),
+    };
+  }
   if (!Object.keys(dbPatch).length) return;
   const { error } = await supabase.from('resellers').update(dbPatch).eq('id', id);
   ensure(error);
@@ -495,7 +524,7 @@ export async function createInteraction(item, organizationId, userId) {
     const now = new Date().toISOString();
     const campaignPatch = {
       replied_at: now,
-      status: item.resultado === 'Convertido' ? 'convertido' : 'respondido',
+      status: item.resultado === 'Convertido' ? 'convertido' : 'respondeu',
       ...(item.resultado === 'Convertido' ? { converted_at: now } : {}),
     };
     const { error: recipientUpdateError } = await supabase
@@ -587,13 +616,14 @@ export async function createCampaign(campaign, organizationId, userId) {
     organization_id: organizationId,
     created_by: userId,
     name: campaign.name,
-    audience: { group: campaign.group },
+    audience: campaign.audience || { group: campaign.group },
     message_template: campaign.message,
     status: campaign.status || 'rascunho',
   }).select('*').single();
   ensure(error);
 
   const resellerIds = [...new Set(campaign.resellerIds || [])];
+  if (resellerIds.length > MAX_WHATSAPP_BATCH) throw new Error(`Cada lote de WhatsApp permite no máximo ${MAX_WHATSAPP_BATCH} contatos.`);
   if (resellerIds.length) {
     const recipients = resellerIds.map(resellerId => ({
       campaign_id: data.id,
@@ -625,20 +655,69 @@ export async function getNextCampaignRecipient(campaignId) {
     .single();
   ensure(resellerError);
 
+  return { ...mapReseller(resellerRow), campaignRecipientId: recipient.id };
+}
+
+export async function updateCampaignRecipientStatus(campaignId, resellerId, status) {
+  const allowed = new Set(['pendente', 'aberto', 'enviado', 'respondeu', 'convertido', 'nao_respondeu', 'bloqueado']);
+  if (!allowed.has(status)) throw new Error('Situação de campanha inválida.');
+
   const now = new Date().toISOString();
-  const { error: updateError } = await supabase
+  const patch = { status };
+  if (['aberto', 'enviado', 'respondeu', 'convertido', 'nao_respondeu', 'bloqueado'].includes(status)) patch.sent_at = now;
+  if (['respondeu', 'convertido'].includes(status)) patch.replied_at = now;
+  if (status === 'convertido') patch.converted_at = now;
+
+  const { error } = await supabase
     .from('campaign_recipients')
-    .update({ status: 'aberto', sent_at: now })
-    .eq('id', recipient.id);
+    .update(patch)
+    .eq('campaign_id', campaignId)
+    .eq('reseller_id', resellerId);
+  ensure(error);
+
+  if (status !== 'pendente') {
+    const { error: runningError } = await supabase
+      .from('campaigns')
+      .update({ status: 'em_andamento' })
+      .eq('id', campaignId)
+      .in('status', ['rascunho', 'agendada']);
+    ensure(runningError);
+  }
+
+  const { count, error: pendingError } = await supabase
+    .from('campaign_recipients')
+    .select('id', { count: 'exact', head: true })
+    .eq('campaign_id', campaignId)
+    .eq('status', 'pendente');
+  ensure(pendingError);
+
+  if ((count || 0) === 0) {
+    const { error: campaignError } = await supabase
+      .from('campaigns')
+      .update({ status: 'concluida', finished_at: now })
+      .eq('id', campaignId);
+    ensure(campaignError);
+  }
+}
+
+export async function setResellerWhatsAppOptOut(resellerId, optOut = true) {
+  const { data, error } = await supabase
+    .from('resellers')
+    .select('metadata')
+    .eq('id', resellerId)
+    .single();
+  ensure(error);
+
+  const metadata = {
+    ...(data?.metadata || {}),
+    whatsappOptOut: Boolean(optOut),
+    whatsappOptOutAt: optOut ? new Date().toISOString() : null,
+  };
+  const { error: updateError } = await supabase
+    .from('resellers')
+    .update({ metadata })
+    .eq('id', resellerId);
   ensure(updateError);
-
-  const { error: campaignError } = await supabase
-    .from('campaigns')
-    .update({ status: 'em_andamento', started_at: now })
-    .eq('id', campaignId);
-  ensure(campaignError);
-
-  return mapReseller(resellerRow);
 }
 
 export async function deleteCampaign(id) {

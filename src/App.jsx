@@ -45,6 +45,8 @@ import {
   saveAvatar,
   saveGoal,
   saveOrganizationSettings,
+  setResellerWhatsAppOptOut,
+  updateCampaignRecipientStatus,
   updateProfile,
   updateReseller,
   updateTask,
@@ -496,10 +498,26 @@ export default function App() {
         if (!target) return notify('A fila desta campanha foi concluída ou não possui contatos pendentes.');
         const result = openWhatsApp(target, { message: renderMessage(campaign.message, target) });
         if (!result.valid) return notify(result.error);
+        await updateCampaignRecipientStatus(campaign.id, target.id, 'aberto');
         await audit(`Abriu contato da campanha ${campaign.name}.`, 'campaign', campaign.id, { resellerId: target.id });
         await refreshAll();
+        return target;
       } catch (error) {
         notify(error.message || 'Não foi possível abrir o próximo contato.');
+        throw error;
+      }
+    }} onUpdateRecipient={async (campaign, resellerId, status) => {
+      try {
+        await updateCampaignRecipientStatus(campaign.id, resellerId, status);
+        if (status === 'bloqueado') {
+          await setResellerWhatsAppOptOut(resellerId, true);
+        }
+        await audit(`Atualizou contato do lote ${campaign.name}: ${status}.`, 'campaign', campaign.id, { resellerId, status });
+        await refreshAll();
+        notify(status === 'bloqueado' ? 'Contato retirado dos próximos lotes de WhatsApp.' : 'Situação do contato atualizada.');
+      } catch (error) {
+        notify(error.message || 'Não foi possível atualizar o contato do lote.');
+        throw error;
       }
     }}/>;
   } else if (active === 'Sincronização') {

@@ -111,6 +111,7 @@ export async function loadAppUser(authUser) {
     carteira,
     activitySegments: Array.isArray(membership.activity_segments) ? membership.activity_segments : defaults.activitySegments,
     recoveryGroups: Array.isArray(membership.recovery_groups) ? membership.recovery_groups : defaults.recoveryGroups,
+    activityCycleStatuses: Array.isArray(membership.activity_cycle_statuses) ? membership.activity_cycle_statuses : defaults.activityCycleStatuses,
     ativo: membership.active,
     organizationId: membership.organization_id,
     avatarConfig: profile?.avatar_config && Object.keys(profile.avatar_config).length ? profile.avatar_config : defaultAvatar,

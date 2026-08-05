@@ -9,7 +9,8 @@ alter table public.organizations
 
 alter table public.memberships
   add column if not exists activity_segments text[] not null default '{}'::text[],
-  add column if not exists recovery_groups text[] not null default '{}'::text[];
+  add column if not exists recovery_groups text[] not null default '{}'::text[],
+  add column if not exists activity_cycle_statuses text[] not null default array['Ativo','Ativo 1','Ativo 2','Ativo 3','Inativo 4','Inativo 5']::text[];
 
 -- Converte as carteiras legadas para regras explícitas.
 update public.memberships
@@ -31,6 +32,7 @@ where cardinality(activity_segments) = 0
 update public.memberships
 set activity_segments = array['Cobre','Bronze','Prata','Ouro','Platina','Rubi','Esmeralda','Diamante']::text[],
     recovery_groups = array['I6','Cessados','Intenções']::text[],
+    activity_cycle_statuses = array['Ativo','Ativo 1','Ativo 2','Ativo 3','Inativo 4','Inativo 5']::text[],
     wallet = 'todas'
 where role in ('administrador','gerente');
 
