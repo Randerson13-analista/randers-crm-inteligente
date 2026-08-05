@@ -94,3 +94,5 @@
 
 /* Proteção global contra tela branca */
 .fatal-error-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;background:radial-gradient(circle at top,#e7faef,#f7faf8 55%,#fff);color:#15352a;gap:12px}.fatal-error-screen img{width:76px;height:76px}.fatal-error-screen small{font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#11834f}.fatal-error-screen h1{max-width:680px;margin:0;font-size:clamp(28px,5vw,48px)}.fatal-error-screen p{max-width:650px;margin:0 0 8px;color:#557066}.fatal-error-screen details{max-width:720px;width:100%;padding:12px 16px;border:1px solid #d9e8df;border-radius:14px;background:#fff}.fatal-error-screen code{display:block;overflow-wrap:anywhere;margin-top:10px;color:#8d2835}
+
+.invite-manual-result,.form-success{border:1px solid #94d3ae;background:#effaf3;border-radius:14px;padding:12px;display:grid;gap:8px;color:#064f35}.invite-manual-result small{color:#3d6c5a}.invite-manual-result input{font-size:12px;background:#fff}.form-success{font-weight:700}

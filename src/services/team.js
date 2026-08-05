@@ -196,7 +196,9 @@ export async function inviteCollaborator({ organizationId, nome, email, cargo, c
     }
 
     if (!response.ok) {
-      const detail = payload?.error || payload?.message || `Erro HTTP ${response.status}`;
+      const stage = payload?.stage ? ` [etapa: ${payload.stage}]` : '';
+      const code = payload?.code ? ` [código: ${payload.code}]` : '';
+      const detail = `${payload?.error || payload?.message || `Erro HTTP ${response.status}`}${code}${stage}`;
       if (response.status === 401) throw new Error('A função recusou sua sessão. Saia do CRM, entre novamente e tente outra vez.');
       if (response.status === 404) throw new Error('A função invite-collaborator não foi encontrada no projeto Supabase configurado.');
       throw new Error(detail);

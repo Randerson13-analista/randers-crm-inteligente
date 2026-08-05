@@ -429,10 +429,11 @@ export default function App() {
     content = <ManagerPanel users={state.users} history={state.history} agenda={state.agenda}/>;
   } else if (active === 'Administração' && user.cargo === 'Administrador') {
     content = <Admin users={state.users} revendedores={state.revendedores} loading={teamLoading} onInvite={async form => {
-      await inviteCollaborator({ organizationId: user.organizationId, ...form });
-      await audit(`Convidou ${form.nome}.`, 'membership');
-      notify('Convite enviado por e-mail.');
+      const result = await inviteCollaborator({ organizationId: user.organizationId, ...form });
+      await audit(`Convidou ${form.nome}.`, 'membership', result?.userId || null, { delivery: result?.delivery });
+      notify(result?.delivery === 'manual_link' ? 'Convite criado. Copie o link manual exibido no formulário.' : 'Convite enviado por e-mail.');
       await refreshTeam(user.organizationId);
+      return result;
     }} onUpdate={async (id, patch) => {
       try {
         await updateMembership(id, patch, user.organizationId);

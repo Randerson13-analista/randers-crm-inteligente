@@ -1,7 +1,7 @@
 {
   "name": "randers-crm",
   "private": true,
-  "version": "10.0.1-invite-hotfix",
+  "version": "10.0.2-invite-fallback",
   "type": "module",
   "scripts": {
     "dev": "vite",

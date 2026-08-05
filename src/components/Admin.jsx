@@ -119,6 +119,7 @@ export default function Admin({ users, revendedores = [], onInvite, onUpdate, on
   const [submitting, setSubmitting] = useState(false);
   const [distributing, setDistributing] = useState(false);
   const [error, setError] = useState('');
+  const [inviteResult, setInviteResult] = useState(null);
   const summary = useMemo(() => assignmentSummary(revendedores, users), [revendedores, users]);
 
   const setPreset = id => {
@@ -135,13 +136,15 @@ export default function Admin({ users, revendedores = [], onInvite, onUpdate, on
   const submit = async event => {
     event.preventDefault();
     setError('');
+    setInviteResult(null);
     if (!form.nome.trim() || !form.email.trim()) return setError('Informe nome e e-mail.');
     if (form.cargo === 'Consultor' && !form.activitySegments.length && !form.recoveryGroups.length) {
       return setError('Selecione ao menos uma segmentação da Atividade ou um grupo de Recuperação.');
     }
     setSubmitting(true);
     try {
-      await onInvite(form);
+      const result = await onInvite(form);
+      setInviteResult(result || null);
       setForm({
         nome: '', email: '', cargo: 'Consultor', carteira: WALLET_LABELS.recovery,
         activitySegments: [], recoveryGroups: [...RECOVERY_GROUPS],
@@ -179,6 +182,15 @@ export default function Admin({ users, revendedores = [], onInvite, onUpdate, on
         </div>
         <PortfolioFields activitySegments={form.activitySegments} recoveryGroups={form.recoveryGroups} onChange={next => setForm({ ...form, ...next, carteira: WALLET_LABELS.custom })} disabled={form.cargo !== 'Consultor'}/>
         {error && <div className="form-error">{error}</div>}
+        {inviteResult?.delivery === 'manual_link' && inviteResult.inviteLink && <div className="invite-manual-result">
+          <b>Convite criado sem envio automático</b>
+          <small>Copie o link abaixo e envie ao colaborador por WhatsApp ou e-mail. Ele é pessoal e temporário.</small>
+          <input readOnly value={inviteResult.inviteLink} onFocus={event => event.target.select()}/>
+          <button type="button" className="secondary compact-button" onClick={async () => {
+            await navigator.clipboard.writeText(inviteResult.inviteLink);
+          }}>Copiar link do convite</button>
+        </div>}
+        {inviteResult?.delivery === 'email' && <div className="form-success">Convite enviado por e-mail.</div>}
         <button className="primary" disabled={submitting}>{submitting ? 'Enviando convite...' : 'Enviar convite de acesso'}</button>
       </form>
 
