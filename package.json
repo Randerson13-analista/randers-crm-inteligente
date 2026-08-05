@@ -1,7 +1,7 @@
 {
   "name": "randers-crm",
   "private": true,
-  "version": "4.0.0-supabase-data",
+  "version": "5.0.0-glb-avatar",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -1,5 +1,6 @@
 import React,{useEffect,useRef} from 'react';
 import * as THREE from 'three';
+import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {defaultAvatar} from '../data/avatarOptions';
 
 const isHuman=id=>String(id).startsWith('male')||String(id).startsWith('female');
@@ -114,6 +115,8 @@ function addCreature(root,a){
  addAccessory(root,a);
 }
 function buildAvatar(a){const root=new THREE.Group();(isHuman(a.character)?addHuman:addCreature)(root,a);root.position.y=.2;return root}
+const isExternalModel=a=>Boolean(a.modelUrl)&&(['realistic-man','realistic-fox','custom-glb'].includes(a.character)||String(a.character).startsWith('model-'));
+function fitModel(object,targetHeight=3.3){const box=new THREE.Box3().setFromObject(object);const size=box.getSize(new THREE.Vector3());const center=box.getCenter(new THREE.Vector3());const scale=targetHeight/Math.max(size.y,.001);object.scale.setScalar(scale);object.position.set(-center.x*scale,-box.min.y*scale-.42,-center.z*scale);object.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.material){o.material=o.material.clone();o.material.roughness=Math.min(.72,o.material.roughness??.55);o.material.metalness=Math.min(.35,o.material.metalness??0)}}});return object}
 
 export default function AvatarPreview({avatar:raw,compact=false,interactive=!compact}){
  const host=useRef(null);const state=useRef({});const a={...defaultAvatar,...raw};
@@ -125,7 +128,11 @@ export default function AvatarPreview({avatar:raw,compact=false,interactive=!com
   const hemi=new THREE.HemisphereLight('#eafff4','#17352c',2.1);scene.add(hemi);
   const key=new THREE.DirectionalLight('#ffffff',3.2);key.position.set(3,6,5);key.castShadow=!compact;scene.add(key);
   const rim=new THREE.PointLight('#32f59a',3.5,10);rim.position.set(-3,2,2);scene.add(rim);
-  const avatar=buildAvatar(a);scene.add(avatar);
+  const avatar=new THREE.Group();scene.add(avatar);let mixer=null;let loadCancelled=false;let modelError=null;
+  if(isExternalModel(a)){
+   const loader=new GLTFLoader();
+   loader.load(a.modelUrl,gltf=>{if(loadCancelled)return;const model=fitModel(gltf.scene,compact?2.8:3.35);avatar.add(model);if(gltf.animations?.length){mixer=new THREE.AnimationMixer(model);const preferred=gltf.animations.find(c=>/idle|survey|walk/i.test(c.name))||gltf.animations[0];mixer.clipAction(preferred).play()}resize()},undefined,err=>{modelError=err;avatar.add(buildAvatar({...a,character:'male-classic',modelUrl:''}));resize()});
+  }else avatar.add(buildAvatar(a));
   const floor=mesh(new THREE.CylinderGeometry(1.25,1.45,.18,64),mat('#0b6f46',{metalness:.28,roughness:.25}),scene,[0,-.62,0]);floor.receiveShadow=true;
   const ring=new THREE.Mesh(new THREE.TorusGeometry(1.08,.035,10,64),new THREE.MeshStandardMaterial({color:'#6bffb0',emissive:'#38f797',emissiveIntensity:2}));ring.rotation.x=Math.PI/2;ring.position.y=-.51;scene.add(ring);
   let rotY=0,rotX=0,zoom=1,drag=false,lastX=0,lastY=0,frame=0;
@@ -134,9 +141,9 @@ export default function AvatarPreview({avatar:raw,compact=false,interactive=!com
   const move=e=>{if(!drag)return;rotY+=(e.clientX-lastX)*.012;rotX=Math.max(-.25,Math.min(.25,rotX+(e.clientY-lastY)*.006));lastX=e.clientX;lastY=e.clientY};
   const up=()=>drag=false;const wheel=e=>{if(!interactive)return;e.preventDefault();zoom=Math.max(.72,Math.min(1.38,zoom-e.deltaY*.0008))};
   renderer.domElement.addEventListener('pointerdown',down);renderer.domElement.addEventListener('pointermove',move);renderer.domElement.addEventListener('pointerup',up);renderer.domElement.addEventListener('pointercancel',up);renderer.domElement.addEventListener('wheel',wheel,{passive:false});
-  const animate=t=>{avatar.rotation.y=rotY+(interactive?Math.sin(t*.00035)*.055:0);avatar.rotation.x=rotX;avatar.scale.setScalar(zoom);if(interactive)avatar.position.y=.2+Math.sin(t*.002)*.018;renderer.render(scene,camera);if(interactive)frame=requestAnimationFrame(animate)};if(interactive)frame=requestAnimationFrame(animate);else renderer.render(scene,camera);
+  let previous=performance.now();const animate=t=>{const dt=Math.min(.05,(t-previous)/1000);previous=t;mixer?.update(dt);avatar.rotation.y=rotY+(interactive?Math.sin(t*.00035)*.055:0);avatar.rotation.x=rotX;avatar.scale.setScalar(zoom);if(interactive)avatar.position.y=Math.sin(t*.002)*.018;renderer.render(scene,camera);if(interactive||mixer)frame=requestAnimationFrame(animate)};frame=requestAnimationFrame(animate);
   state.current={renderer,scene,camera,avatar};
-  return()=>{cancelAnimationFrame(frame);ro.disconnect();renderer.domElement.removeEventListener('pointerdown',down);renderer.domElement.removeEventListener('pointermove',move);renderer.domElement.removeEventListener('pointerup',up);renderer.domElement.removeEventListener('pointercancel',up);renderer.domElement.removeEventListener('wheel',wheel);scene.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material?.dispose?.()});renderer.dispose();el.innerHTML=''};
+  return()=>{loadCancelled=true;cancelAnimationFrame(frame);mixer?.stopAllAction();ro.disconnect();renderer.domElement.removeEventListener('pointerdown',down);renderer.domElement.removeEventListener('pointermove',move);renderer.domElement.removeEventListener('pointerup',up);renderer.domElement.removeEventListener('pointercancel',up);renderer.domElement.removeEventListener('wheel',wheel);scene.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material?.dispose?.()});renderer.dispose();el.innerHTML=''};
  },[JSON.stringify(a),compact,interactive]);
  return <div ref={host} className={`avatar-render avatar-3d ${compact?'compact':''}`} title={`${a.character} · ${a.outfit}`} aria-label="Avatar tridimensional personalizado"/>;
 }
