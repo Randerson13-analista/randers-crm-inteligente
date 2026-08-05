@@ -47,7 +47,8 @@ export function canonicalRecoveryGroup(value) {
   if (!normalized) return '';
   if (normalized.includes('intenc')) return 'Intenções';
   if (normalized.includes('cess')) return 'Cessados';
-  if (normalized === 'i6' || normalized.includes('inativo 6') || normalized.includes('inatividade 6')) return 'I6';
+  const hasI6Token = /(^|[^a-z0-9])i[\s_-]*6([^a-z0-9]|$)/i.test(normalized);
+  if (hasI6Token || normalized.includes('inativo 6') || normalized.includes('inatividade 6')) return 'I6';
   return canonicalFrom(value, RECOVERY_GROUPS);
 }
 

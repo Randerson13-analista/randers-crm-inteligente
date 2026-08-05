@@ -36,3 +36,11 @@
 - adiciona timeout e recuperação da inicialização;
 - remove Service Worker e caches antigos;
 - força HTML atualizado após cada deploy.
+
+
+## v10.6 — carteira completa e contagens corretas
+- pagina todas as consultas, removendo o limite invisível de 1.000 registros;
+- reconhece `I6` como token dentro do nome da planilha;
+- conta segmentações somente entre registros de Atividade;
+- pagina a busca de existentes durante reimportações para evitar duplicidades;
+- permite corrigir a base já importada apenas reimportando as mesmas duas planilhas.

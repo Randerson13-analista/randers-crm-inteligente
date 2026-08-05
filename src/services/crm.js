@@ -45,6 +45,24 @@ const ensure = error => {
   if (error) throw error;
 };
 
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows(buildQuery, pageSize = PAGE_SIZE) {
+  const rows = [];
+  let from = 0;
+
+  while (true) {
+    const result = await buildQuery().range(from, from + pageSize - 1);
+    ensure(result.error);
+    const page = result.data || [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return { data: rows, error: null };
+}
+
 const normalizeText = value => String(value ?? '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -125,13 +143,13 @@ export async function loadCrmData(organizationId, users, isManager) {
   if (!supabase || !organizationId) return emptyCrmData();
 
   const queries = [
-    supabase.from('resellers').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }),
-    supabase.from('interactions').select('*').eq('organization_id', organizationId).order('occurred_at', { ascending: false }),
-    supabase.from('tasks').select('*').eq('organization_id', organizationId).order('due_at', { ascending: true }),
-    supabase.from('goals').select('*').eq('organization_id', organizationId).order('period_start', { ascending: false }),
-    supabase.from('campaigns').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }),
-    supabase.from('campaign_recipients').select('campaign_id, reseller_id, status, sent_at, replied_at, converted_at'),
-    supabase.from('import_jobs').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }),
+    fetchAllRows(() => supabase.from('resellers').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).order('id', { ascending: false })),
+    fetchAllRows(() => supabase.from('interactions').select('*').eq('organization_id', organizationId).order('occurred_at', { ascending: false }).order('id', { ascending: false })),
+    fetchAllRows(() => supabase.from('tasks').select('*').eq('organization_id', organizationId).order('due_at', { ascending: true }).order('id', { ascending: true })),
+    fetchAllRows(() => supabase.from('goals').select('*').eq('organization_id', organizationId).order('period_start', { ascending: false }).order('id', { ascending: false })),
+    fetchAllRows(() => supabase.from('campaigns').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).order('id', { ascending: false })),
+    fetchAllRows(() => supabase.from('campaign_recipients').select('campaign_id, reseller_id, status, sent_at, replied_at, converted_at').order('campaign_id', { ascending: true }).order('reseller_id', { ascending: true })),
+    fetchAllRows(() => supabase.from('import_jobs').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).order('id', { ascending: false })),
     supabase.from('organizations').select('*').eq('id', organizationId).single(),
   ];
 
@@ -334,10 +352,11 @@ export async function importResellers(
 
   let prepared = [...consolidated.values()];
 
-  const { data: existingRows, error: existingError } = await supabase
+  const { data: existingRows, error: existingError } = await fetchAllRows(() => supabase
     .from('resellers')
     .select('*')
-    .eq('organization_id', organizationId);
+    .eq('organization_id', organizationId)
+    .order('id', { ascending: true }));
   ensure(existingError);
 
   const existing = (existingRows || []).map(mapReseller);

@@ -8,7 +8,7 @@ export default function Dashboard({ revendedores = [], history = [], agenda = []
   const stats = useMemo(() => {
     const total = revendedores.length;
     const atividade = revendedores.filter(item => item.base === 'Atividade').length;
-    const premium = revendedores.filter(item => VIP_ACTIVITY_SEGMENTS.includes(item.nivel)).length;
+    const premium = revendedores.filter(item => item.base === 'Atividade' && VIP_ACTIVITY_SEGMENTS.includes(item.nivel)).length;
     const recuperacao = revendedores.filter(item => RECOVERY_GROUPS.includes(item.base)).length;
     const convertidos = revendedores.filter(item => item.status === 'Convertido').length;
     const emContato = revendedores.filter(item => ['Em contato', 'Retorno', 'Negociando'].includes(item.status)).length;
@@ -34,7 +34,7 @@ export default function Dashboard({ revendedores = [], history = [], agenda = []
     return result;
   }, {})).sort((a, b) => b[1] - a[1]);
 
-  const byLevel = ACTIVITY_SEGMENTS.map(level => [level, revendedores.filter(item => item.nivel === level).length])
+  const byLevel = ACTIVITY_SEGMENTS.map(level => [level, revendedores.filter(item => item.base === 'Atividade' && item.nivel === level).length])
     .filter(([, value]) => value > 0)
     .sort((a, b) => b[1] - a[1]);
 

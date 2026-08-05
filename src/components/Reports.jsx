@@ -36,7 +36,7 @@ export default function Reports({ revendedores = [], history = [], agenda = [] }
   }, {})).sort((a, b) => b[1] - a[1]), [revendedores]);
 
   const bySegment = useMemo(() => ACTIVITY_SEGMENTS
-    .map(segment => [segment, revendedores.filter(item => item.nivel === segment).length])
+    .map(segment => [segment, revendedores.filter(item => item.base === 'Atividade' && item.nivel === segment).length])
     .filter(([, value]) => value > 0)
     .sort((a, b) => b[1] - a[1]), [revendedores]);
 
