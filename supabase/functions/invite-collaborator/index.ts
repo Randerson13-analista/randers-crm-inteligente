@@ -1,66 +1,110 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { withSupabase } from "npm:@supabase/server@^1";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const ALLOWED_ROLES = new Set(["administrador", "gerente", "consultor"]);
+const ALLOWED_WALLETS = new Set(["recuperacao", "cobre_ouro", "vip", "todas"]);
+const ACTIVITY_SEGMENTS = new Set([
+  "Cobre", "Bronze", "Prata", "Ouro", "Platina", "Rubi", "Esmeralda", "Diamante",
+]);
+const RECOVERY_GROUPS = new Set(["I6", "Cessados", "Intenções"]);
+
+function uniqueAllowed(values: unknown, allowed: Set<string>): string[] {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.filter((value): value is string =>
+    typeof value === "string" && allowed.has(value)
+  ))];
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const authHeader = req.headers.get('Authorization') || ''
-    const callerClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } })
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Erro ao convidar colaborador.";
+}
 
-    const { data: userData, error: userError } = await callerClient.auth.getUser()
-    if (userError || !userData.user) throw new Error('Sessão inválida.')
+export default {
+  fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
+    if (req.method !== "POST") {
+      return Response.json({ error: "Método não permitido." }, { status: 405 });
+    }
 
-    const body = await req.json()
-    const { organizationId, fullName, email, role, wallet, activitySegments, recoveryGroups, redirectTo } = body
-    if (!organizationId || !fullName || !email) throw new Error('Nome, e-mail e organização são obrigatórios.')
+    let invitedUserId: string | null = null;
 
-    const { data: membership, error: membershipError } = await adminClient
-      .from('memberships').select('role, active').eq('organization_id', organizationId)
-      .eq('user_id', userData.user.id).eq('active', true).maybeSingle()
-    if (membershipError) throw membershipError
-    if (!membership || membership.role !== 'administrador') throw new Error('Somente administradores podem convidar colaboradores.')
+    try {
+      const { data: authData, error: authError } = await ctx.supabase.auth.getUser();
+      if (authError || !authData.user) {
+        return Response.json({ error: "Sessão inválida." }, { status: 401 });
+      }
 
-    const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-      data: { full_name: fullName },
-      redirectTo: redirectTo || undefined,
-    })
-    if (inviteError) throw inviteError
-    if (!invited.user) throw new Error('O Supabase não retornou o usuário convidado.')
+      const body = await req.json();
+      const organizationId = String(body.organizationId ?? "").trim();
+      const fullName = String(body.fullName ?? "").trim();
+      const email = String(body.email ?? "").trim().toLowerCase();
+      const redirectTo = String(body.redirectTo ?? "").trim() || undefined;
+      const requestedRole = String(body.role ?? "consultor").trim().toLowerCase();
+      const role = ALLOWED_ROLES.has(requestedRole) ? requestedRole : "consultor";
 
-    const { error: profileError } = await adminClient.from('profiles').upsert({
-      id: invited.user.id,
-      full_name: fullName,
-      email,
-      email_confirmed: false,
-      must_change_password: true,
-    }, { onConflict: 'id' })
-    if (profileError) throw profileError
+      if (!organizationId || !fullName || !email) {
+        return Response.json({ error: "Nome, e-mail e organização são obrigatórios." }, { status: 400 });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
+      }
 
-    const { error: memberError } = await adminClient.from('memberships').upsert({
-      organization_id: organizationId,
-      user_id: invited.user.id,
-      role: ['administrador','gerente','consultor'].includes(role) ? role : 'consultor',
-      wallet: ['recuperacao','cobre_ouro','vip','todas'].includes(wallet) ? wallet : 'recuperacao',
-      activity_segments: Array.isArray(activitySegments) ? activitySegments : [],
-      recovery_groups: Array.isArray(recoveryGroups) ? recoveryGroups : [],
-      active: true,
-    }, { onConflict: 'organization_id,user_id' })
-    if (memberError) throw memberError
+      const { data: membership, error: membershipError } = await ctx.supabaseAdmin
+        .from("memberships")
+        .select("role, active")
+        .eq("organization_id", organizationId)
+        .eq("user_id", authData.user.id)
+        .eq("active", true)
+        .maybeSingle();
 
-    return new Response(JSON.stringify({ ok: true, userId: invited.user.id }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,
-    })
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message || 'Erro ao convidar colaborador.' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400,
-    })
-  }
-})
+      if (membershipError) throw membershipError;
+      if (!membership || membership.role !== "administrador") {
+        return Response.json({ error: "Somente administradores podem convidar colaboradores." }, { status: 403 });
+      }
+
+      let activitySegments = uniqueAllowed(body.activitySegments, ACTIVITY_SEGMENTS);
+      let recoveryGroups = uniqueAllowed(body.recoveryGroups, RECOVERY_GROUPS);
+      let wallet = ALLOWED_WALLETS.has(String(body.wallet ?? "")) ? String(body.wallet) : "recuperacao";
+
+      if (role === "administrador" || role === "gerente") {
+        activitySegments = [...ACTIVITY_SEGMENTS];
+        recoveryGroups = [...RECOVERY_GROUPS];
+        wallet = "todas";
+      }
+
+      const { data: invited, error: inviteError } = await ctx.supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        data: { full_name: fullName },
+        redirectTo,
+      });
+      if (inviteError) throw inviteError;
+      if (!invited.user) throw new Error("O Supabase não retornou o usuário convidado.");
+      invitedUserId = invited.user.id;
+
+      const { error: profileError } = await ctx.supabaseAdmin.from("profiles").upsert({
+        id: invited.user.id,
+        full_name: fullName,
+        email,
+        email_confirmed: false,
+        must_change_password: true,
+      }, { onConflict: "id" });
+      if (profileError) throw profileError;
+
+      const { error: membershipInsertError } = await ctx.supabaseAdmin.from("memberships").upsert({
+        organization_id: organizationId,
+        user_id: invited.user.id,
+        role,
+        wallet,
+        activity_segments: activitySegments,
+        recovery_groups: recoveryGroups,
+        active: true,
+      }, { onConflict: "organization_id,user_id" });
+      if (membershipInsertError) throw membershipInsertError;
+
+      return Response.json({ ok: true, userId: invited.user.id }, { status: 200 });
+    } catch (error) {
+      if (invitedUserId) {
+        try { await ctx.supabaseAdmin.auth.admin.deleteUser(invitedUserId); } catch { /* rollback best effort */ }
+      }
+      console.error("invite-collaborator:", error);
+      return Response.json({ error: errorMessage(error) }, { status: 400 });
+    }
+  }),
+};

@@ -153,36 +153,68 @@ export async function updateMembership(userId, patch, organizationId) {
 export async function inviteCollaborator({ organizationId, nome, email, cargo, carteira, activitySegments, recoveryGroups }) {
   if (!supabase) throw new Error('Supabase não configurado.');
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) throw new Error('Sua sessão expirou. Entre novamente.');
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const session = sessionData?.session;
+  if (sessionError || !session?.access_token) throw new Error('Sua sessão expirou. Saia do CRM e entre novamente.');
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!supabaseUrl || !publishableKey) throw new Error('As variáveis do Supabase não estão configuradas na Vercel.');
 
   const defaults = defaultPortfolioForWallet(carteira);
   const selectedActivity = activitySegments?.length ? activitySegments : defaults.activitySegments;
   const selectedRecovery = recoveryGroups?.length ? recoveryGroups : defaults.recoveryGroups;
   const wallet = legacyWalletForRules(selectedActivity, selectedRecovery, cargo);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 20000);
 
-  const { data, error } = await supabase.functions.invoke('invite-collaborator', {
-    body: {
-      organizationId,
-      fullName: nome.trim(),
-      email: email.trim().toLowerCase(),
-      role: roleValues[cargo] || 'consultor',
-      wallet,
-      activitySegments: selectedActivity,
-      recoveryGroups: selectedRecovery,
-      redirectTo: `${window.location.origin}/`,
-    },
-  });
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/invite-collaborator`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: publishableKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        organizationId,
+        fullName: nome.trim(),
+        email: email.trim().toLowerCase(),
+        role: roleValues[cargo] || 'consultor',
+        wallet,
+        activitySegments: selectedActivity,
+        recoveryGroups: selectedRecovery,
+        redirectTo: `${window.location.origin}/`,
+      }),
+      signal: controller.signal,
+    });
 
-  if (error) {
-    const message = error.message || 'Não foi possível enviar o convite.';
-    if (/not found|404|function/i.test(message)) {
-      throw new Error('A função de convite ainda não foi publicada no Supabase. Use o arquivo de configuração incluído nesta versão.');
+    const raw = await response.text();
+    let payload = {};
+    if (raw) {
+      try { payload = JSON.parse(raw); } catch { payload = { error: raw }; }
     }
-    throw new Error(message);
+
+    if (!response.ok) {
+      const detail = payload?.error || payload?.message || `Erro HTTP ${response.status}`;
+      if (response.status === 401) throw new Error('A função recusou sua sessão. Saia do CRM, entre novamente e tente outra vez.');
+      if (response.status === 404) throw new Error('A função invite-collaborator não foi encontrada no projeto Supabase configurado.');
+      throw new Error(detail);
+    }
+
+    if (payload?.error) throw new Error(payload.error);
+    return payload;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('O servidor de convites não respondeu em 20 segundos. A tentativa foi cancelada para o botão não ficar travado.');
+    }
+    if (error instanceof TypeError && /fetch|network|failed/i.test(error.message || '')) {
+      throw new Error('O navegador não conseguiu alcançar a Edge Function. Verifique a configuração JWT/CORS da função e tente novamente.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  if (data?.error) throw new Error(data.error);
-  return data;
 }
 
 export { roleValues, walletValues, walletLabels };

@@ -1,4 +1,4 @@
-const CACHE='randerscrm-v10-core-final';
+const CACHE='randerscrm-v10-1-invite-hotfix';
 const APP=['/','/index.html','/brain.svg','/manifest.webmanifest'];
 self.addEventListener('install',event=>{self.skipWaiting();event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(APP)))});
 self.addEventListener('activate',event=>event.waitUntil(Promise.all([self.clients.claim(),caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key))))])));
