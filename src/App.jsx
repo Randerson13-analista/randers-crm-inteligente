@@ -59,7 +59,7 @@ const titles = {
   Histórico: ['Histórico', 'Registre e consulte todos os atendimentos.'],
   'Metas e ranking': ['Metas e ranking', 'Acompanhe metas e desempenho da equipe.'],
   'Painel do gestor': ['Painel do gestor', 'Analise produtividade, conversões e atrasos.'],
-  Campanhas: ['Campanhas', 'Crie abordagens e públicos para o WhatsApp.'],
+  Campanhas: ['Campanhas', 'Crie lotes, acompanhe resultados e exporte o histórico do WhatsApp.'],
   Relatórios: ['Relatórios', 'Exporte dados e acompanhe resultados.'],
   'Importar planilhas': ['Importar planilhas', 'Envie suas bases e deixe o CRM classificar e atualizar os registros.'],
   Sincronização: ['Sincronização', 'Acompanhe a conexão e os dados em nuvem.'],
@@ -523,7 +523,7 @@ export default function App() {
   } else if (active === 'Sincronização') {
     content = <Sync state={state} user={user} notify={notify} onRefresh={refreshAll}/>;
   } else if (active === 'Relatórios') {
-    content = <Reports revendedores={visibleRev} history={state.history} agenda={state.agenda}/>;
+    content = <Reports revendedores={visibleRev} history={state.history} agenda={state.agenda} campaigns={state.campaigns || []}/>;
   } else if (active === 'Metas e ranking') {
     content = <GoalsRanking users={state.users} history={state.history} goals={state.goals || {}} currentUser={user} onGoalChange={handleGoal}/>;
   } else if (active === 'Painel do gestor' && ['Administrador', 'Gerente'].includes(user.cargo)) {

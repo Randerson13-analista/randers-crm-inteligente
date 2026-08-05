@@ -110,3 +110,47 @@
 
 @media(max-width:1200px){.campaign-grid-wide{grid-template-columns:1fr}.campaign-list{max-height:none}.cycle-rule-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.campaign-kpis{grid-template-columns:1fr}.campaign-filter-grid{grid-template-columns:1fr}.campaign-filter-grid label:last-child{grid-column:auto}.batch-contact{grid-template-columns:auto 1fr}.batch-contact em{grid-column:2}.campaign-recipient{grid-template-columns:1fr}.campaign-metrics{grid-template-columns:1fr 1fr 1fr}.cycle-status-grid,.cycle-rule-grid{grid-template-columns:1fr 1fr}}
+
+/* v10.8 — histórico e resultados de campanhas */
+.campaign-kpis-detailed{grid-template-columns:repeat(6,minmax(0,1fr))}
+.campaign-history-panel{min-width:0}
+.campaign-history-toolbar{display:grid;grid-template-columns:minmax(210px,1fr) auto auto auto;gap:9px;align-items:center;margin-bottom:12px}
+.campaign-history-toolbar>label{display:flex;align-items:center;gap:7px;border:1px solid #d8e5de;border-radius:11px;padding:0 10px;background:#fff;color:#587066}
+.campaign-history-toolbar input,.campaign-history-toolbar select,.campaign-history-toolbar>select{width:100%;border:0;outline:0;background:transparent;padding:10px 2px;font:inherit;color:#294b3d}
+.campaign-history-toolbar>select{border:1px solid #d8e5de;border-radius:11px;padding:10px 12px;background:#fff}
+.campaign-filter-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:13px}
+.campaign-filter-summary span{background:#f1f8f4;border-radius:11px;padding:9px;text-align:center;font-size:11px;color:#63766c}
+.campaign-filter-summary b{display:block;font-size:17px;color:#075c3c}
+.campaign-result-card{background:linear-gradient(180deg,#fff,#fbfdfc)}
+.campaign-audience-line{font-size:12px;font-weight:800;color:#0a7148;background:#edf8f2;border-radius:10px;padding:8px 10px}
+.campaign-metrics-detailed{grid-template-columns:repeat(6,minmax(0,1fr))}
+.campaign-metrics-detailed span{min-width:0}
+.campaign-status-concluida{background:#dcfce7;color:#166534}
+.campaign-status-em_andamento{background:#dbeafe;color:#1d4ed8}
+.campaign-status-rascunho{background:#f3f4f6;color:#4b5563}
+.campaign-status-pausada{background:#fff7ed;color:#9a3412}
+.campaign-recipient-search{display:flex;align-items:center;gap:7px;border:1px solid #d8e5de;border-radius:10px;padding:0 10px;background:#f9fcfa;margin-bottom:3px;color:#587066}
+.campaign-recipient-search input{width:100%;border:0;outline:0;background:transparent;padding:9px 2px}
+.report-kpis-eight{grid-template-columns:repeat(4,minmax(0,1fr))}
+.campaign-report-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.campaign-report-summary span{background:#f1f8f4;border-radius:11px;padding:10px;text-align:center;color:#63766c;font-size:11px}
+.campaign-report-summary b{display:block;font-size:18px;color:#075c3c}
+.campaign-compliance-panel{display:grid;align-content:start}
+.campaign-compliance-number{font-size:44px;font-weight:950;color:#087548;margin-top:10px}
+.campaign-compliance-panel p{color:#63766c;line-height:1.55;margin-bottom:0}
+
+@media(max-width:1400px){
+  .campaign-kpis-detailed{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .campaign-history-toolbar{grid-template-columns:1fr 1fr}
+  .campaign-metrics-detailed{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:900px){
+  .report-kpis-eight{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .campaign-filter-summary{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:620px){
+  .campaign-kpis-detailed,.report-kpis-eight{grid-template-columns:1fr}
+  .campaign-history-toolbar{grid-template-columns:1fr}
+  .campaign-filter-summary,.campaign-report-summary{grid-template-columns:1fr 1fr}
+  .campaign-metrics-detailed{grid-template-columns:1fr 1fr}
+}

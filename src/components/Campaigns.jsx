@@ -1,5 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, Eye, Megaphone, Plus, Send, Trash2, Users } from 'lucide-react';
+import {
+  BarChart3,
+  CheckCircle2,
+  Download,
+  Eye,
+  Filter,
+  Megaphone,
+  MessageCircle,
+  Plus,
+  Search,
+  Send,
+  ShieldCheck,
+  Trash2,
+  Users,
+} from 'lucide-react';
 import { matchesCampaign } from '../services/intelligence';
 import {
   ACTIVITY_CYCLE_STATUSES,
@@ -9,19 +23,42 @@ import {
   activityCycleStatus,
 } from '../domain/portfolio';
 import { MAX_WHATSAPP_BATCH, normalizeBrazilPhone, renderMessage } from '../services/whatsapp';
+import {
+  CAMPAIGN_STATUS_LABELS,
+  RECIPIENT_STATUS_LABELS,
+  campaignAudienceLabel,
+  campaignRecipientCounts,
+  campaignStatusLabel,
+  campaignSummary,
+  filterCampaigns,
+  recipientStatusLabel,
+} from '../services/campaignAnalytics';
 
 const groups = ['Todos', WALLET_LABELS.recovery, WALLET_LABELS.standard, WALLET_LABELS.vip, ...ACTIVITY_SEGMENTS, ...RECOVERY_GROUPS];
 const MAX_BATCH = MAX_WHATSAPP_BATCH;
-const recipientStatuses = [
-  ['pendente', 'Pendente'],
-  ['aberto', 'Conversa aberta'],
-  ['enviado', 'Enviado'],
-  ['respondeu', 'Respondeu'],
-  ['convertido', 'Convertido'],
-  ['nao_respondeu', 'Não respondeu'],
-  ['bloqueado', 'Não deseja mensagens'],
-];
-const statusLabel = value => recipientStatuses.find(([key]) => key === value)?.[1] || value || 'Pendente';
+const recipientStatuses = Object.entries(RECIPIENT_STATUS_LABELS);
+const campaignStatuses = Object.entries(CAMPAIGN_STATUS_LABELS);
+
+const csv = rows => rows
+  .map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(';'))
+  .join('\n');
+
+const saveCsv = (name, rows) => {
+  const anchor = document.createElement('a');
+  const url = URL.createObjectURL(new Blob(['\ufeff' + csv(rows)], { type: 'text/csv;charset=utf-8' }));
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const formatDate = value => value ? new Date(value).toLocaleString('pt-BR') : '';
+const safeFileName = value => String(value || 'campanha')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-zA-Z0-9-_]+/g, '-')
+  .replace(/^-+|-+$/g, '')
+  .toLowerCase();
 
 export default function Campaigns({ campaigns = [], revendedores = [], onAdd, onDelete, onRun, onUpdateRecipient }) {
   const [name, setName] = useState('');
@@ -37,9 +74,14 @@ export default function Campaigns({ campaigns = [], revendedores = [], onAdd, on
   const [updatingKey, setUpdatingKey] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [error, setError] = useState('');
+  const [historyPeriod, setHistoryPeriod] = useState('Todos');
+  const [historyStatus, setHistoryStatus] = useState('Todos');
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [recipientQuery, setRecipientQuery] = useState('');
 
   const cities = useMemo(() => [...new Set(revendedores.map(item => item.cidade).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [revendedores]);
   const owners = useMemo(() => [...new Set(revendedores.map(item => item.responsavel || 'Não atribuído'))].sort((a, b) => a.localeCompare(b)), [revendedores]);
+  const resellerById = useMemo(() => new Map(revendedores.map(item => [item.id, item])), [revendedores]);
 
   const audience = useMemo(() => revendedores
     .filter(reseller => {
@@ -69,6 +111,14 @@ export default function Campaigns({ campaigns = [], revendedores = [], onAdd, on
   }, [audience, selectedIds]);
   const sample = selected[0] || audience[0];
   const rendered = sample ? renderMessage(message, sample) : message;
+
+  const visibleCampaigns = useMemo(() => filterCampaigns(campaigns, {
+    period: historyPeriod,
+    status: historyStatus,
+    query: historyQuery,
+  }), [campaigns, historyPeriod, historyStatus, historyQuery]);
+  const totals = useMemo(() => campaignSummary(campaigns), [campaigns]);
+  const visibleTotals = useMemo(() => campaignSummary(visibleCampaigns), [visibleCampaigns]);
 
   const toggleSelection = id => {
     setError('');
@@ -103,12 +153,6 @@ export default function Campaigns({ campaigns = [], revendedores = [], onAdd, on
     }
   };
 
-  const totals = campaigns.reduce((result, campaign) => ({
-    sent: result.sent + (campaign.sent || 0),
-    replies: result.replies + (campaign.replies || 0),
-    conversions: result.conversions + (campaign.conversions || 0),
-  }), { sent: 0, replies: 0, conversions: 0 });
-
   const run = async campaign => {
     setRunningId(campaign.id);
     try { await onRun(campaign); } finally { setRunningId(null); }
@@ -120,13 +164,42 @@ export default function Campaigns({ campaigns = [], revendedores = [], onAdd, on
     try { await onUpdateRecipient(campaign, resellerId, status); } finally { setUpdatingKey(''); }
   };
 
-  const resellerById = useMemo(() => new Map(revendedores.map(item => [item.id, item])), [revendedores]);
+  const exportRows = list => [
+    ['Lote', 'Criado em', 'Criado por', 'Situação do lote', 'Público', 'Contato', 'Telefone', 'Cidade', 'Fluxo', 'Segmentação', 'Situação no ciclo', 'Responsável', 'Situação do contato', 'Trabalhado em', 'Respondido em', 'Convertido em'],
+    ...list.flatMap(campaign => (campaign.recipients || []).map(recipient => {
+      const reseller = resellerById.get(recipient.resellerId) || {};
+      return [
+        campaign.name,
+        formatDate(campaign.createdAt),
+        campaign.createdByName,
+        campaignStatusLabel(campaign.status),
+        campaignAudienceLabel(campaign),
+        reseller.nome || 'Contato não disponível',
+        reseller.telefone || '',
+        reseller.cidade || '',
+        reseller.base || '',
+        reseller.nivel || '',
+        reseller.id ? activityCycleStatus(reseller) : '',
+        reseller.responsavel || '',
+        recipientStatusLabel(recipient.status),
+        formatDate(recipient.sentAt),
+        formatDate(recipient.repliedAt),
+        formatDate(recipient.convertedAt),
+      ];
+    })),
+  ];
+
+  const exportAll = () => saveCsv('resultados-campanhas-randerscrm.csv', exportRows(visibleCampaigns));
+  const exportOne = campaign => saveCsv(`campanha-${safeFileName(campaign.name)}.csv`, exportRows([campaign]));
 
   return <div className="module-page">
-    <div className="campaign-kpis">
-      <div><Send/><b>{totals.sent}</b><span>Contatos trabalhados</span></div>
-      <div><Users/><b>{totals.replies}</b><span>Respostas registradas</span></div>
-      <div><BarChart3/><b>{totals.conversions}</b><span>Conversões atribuídas</span></div>
+    <div className="campaign-kpis campaign-kpis-detailed">
+      <div><Megaphone/><b>{totals.campaigns}</b><span>Lotes criados</span></div>
+      <div><Users/><b>{totals.total}</b><span>Contatos incluídos</span></div>
+      <div><Send/><b>{totals.worked}</b><span>Contatos trabalhados</span></div>
+      <div><MessageCircle/><b>{totals.replyRate}%</b><span>Taxa de resposta</span></div>
+      <div><CheckCircle2/><b>{totals.conversions}</b><span>Conversões</span></div>
+      <div><ShieldCheck/><b>{totals.blocked}</b><span>Opt-outs registrados</span></div>
     </div>
 
     <div className="campaign-grid campaign-grid-wide">
@@ -169,36 +242,64 @@ export default function Campaigns({ campaigns = [], revendedores = [], onAdd, on
         <small className="campaign-safety-note">O CRM abre uma conversa por vez e registra o andamento. O envio continua sendo confirmado por você no WhatsApp.</small>
       </form>
 
-      <section className="panel">
-        <div className="panel-title"><div><h2>Lotes salvos</h2><span>Fila individual persistida no Supabase.</span></div></div>
+      <section className="panel campaign-history-panel">
+        <div className="panel-title"><div><h2>Histórico e resultados</h2><span>Consulte, filtre e exporte os lotes salvos.</span></div><BarChart3/></div>
+        <div className="campaign-history-toolbar">
+          <label className="campaign-search"><Search size={17}/><input value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} placeholder="Buscar lote, público ou criador"/></label>
+          <label><Filter size={16}/><select value={historyStatus} onChange={event => setHistoryStatus(event.target.value)}><option>Todos</option>{campaignStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <select value={historyPeriod} onChange={event => setHistoryPeriod(event.target.value)}><option>Todos</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
+          <button type="button" className="secondary-btn" onClick={exportAll} disabled={!visibleCampaigns.length}><Download size={17}/>Exportar resultados</button>
+        </div>
+        <div className="campaign-filter-summary">
+          <span><b>{visibleCampaigns.length}</b> lotes</span>
+          <span><b>{visibleTotals.total}</b> contatos</span>
+          <span><b>{visibleTotals.replyRate}%</b> respostas</span>
+          <span><b>{visibleTotals.conversionRate}%</b> conversão</span>
+        </div>
+
         <div className="campaign-list">
-          {campaigns.length === 0 ? <div className="empty">Nenhum lote criado.</div> : campaigns.map(campaign => {
-            const recipients = campaign.recipients || [];
-            const completed = Math.max(0, (campaign.total || recipients.length) - (campaign.pending || 0));
-            const total = campaign.total || recipients.length || 0;
+          {visibleCampaigns.length === 0 ? <div className="empty">Nenhum lote corresponde aos filtros.</div> : visibleCampaigns.map(campaign => {
+            const counts = campaignRecipientCounts(campaign);
             const open = expandedId === campaign.id;
-            return <article className="campaign-card" key={campaign.id}>
-              <div className="campaign-card-head"><div><strong>{campaign.name}</strong><small>{campaign.group} · {campaign.pending || 0} pendentes de {total}</small></div><span className="pill">{campaign.status || 'rascunho'}</span></div>
+            const needle = recipientQuery.trim().toLowerCase();
+            const recipients = (campaign.recipients || []).filter(recipient => {
+              if (!needle) return true;
+              const reseller = resellerById.get(recipient.resellerId);
+              return [reseller?.nome, reseller?.telefone, reseller?.cidade, recipientStatusLabel(recipient.status)]
+                .some(value => String(value || '').toLowerCase().includes(needle));
+            });
+            return <article className="campaign-card campaign-result-card" key={campaign.id}>
+              <div className="campaign-card-head"><div><strong>{campaign.name}</strong><small>{formatDate(campaign.createdAt)} · {campaign.createdByName || 'Usuário'}</small></div><span className={`pill campaign-status-${campaign.status || 'rascunho'}`}>{campaignStatusLabel(campaign.status)}</span></div>
+              <div className="campaign-audience-line">{campaignAudienceLabel(campaign)}</div>
               <p>{campaign.message}</p>
-              <progress className="campaign-progress" value={completed} max={Math.max(total, 1)}/>
-              <div className="campaign-metrics"><span><b>{campaign.sent || 0}</b> trabalhados</span><span><b>{campaign.replies || 0}</b> respostas</span><span><b>{campaign.conversions || 0}</b> conversões</span></div>
+              <progress className="campaign-progress" value={counts.worked} max={Math.max(counts.total, 1)}/>
+              <div className="campaign-metrics campaign-metrics-detailed">
+                <span><b>{counts.worked}/{counts.total}</b> trabalhados</span>
+                <span><b>{counts.pending}</b> pendentes</span>
+                <span><b>{counts.responses}</b> respostas</span>
+                <span><b>{counts.replyRate}%</b> taxa de resposta</span>
+                <span><b>{counts.converted}</b> conversões</span>
+                <span><b>{counts.blocked}</b> opt-outs</span>
+              </div>
               <div className="campaign-actions">
-                <button className="small-action" disabled={runningId === campaign.id || !(campaign.pending || 0)} onClick={() => run(campaign)}><Send size={15}/>{runningId === campaign.id ? 'Abrindo...' : 'Abrir próximo contato'}</button>
-                <button className="small-action ghost" onClick={() => setExpandedId(open ? null : campaign.id)}>{open ? 'Fechar lote' : 'Gerenciar lote'}</button>
-                <button className="danger-btn" onClick={() => onDelete(campaign.id)}><Trash2 size={15}/></button>
+                <button className="small-action" disabled={runningId === campaign.id || !counts.pending} onClick={() => run(campaign)}><Send size={15}/>{runningId === campaign.id ? 'Abrindo...' : 'Abrir próximo contato'}</button>
+                <button className="small-action ghost" onClick={() => { setExpandedId(open ? null : campaign.id); setRecipientQuery(''); }}>{open ? 'Fechar lote' : 'Gerenciar lote'}</button>
+                <button className="small-action ghost" onClick={() => exportOne(campaign)}><Download size={15}/>CSV</button>
+                <button className="danger-btn" onClick={() => window.confirm(`Excluir o lote “${campaign.name}”?`) && onDelete(campaign.id)}><Trash2 size={15}/></button>
               </div>
 
               {open && <div className="campaign-recipient-list">
-                {recipients.map(recipient => {
+                <label className="campaign-recipient-search"><Search size={16}/><input value={recipientQuery} onChange={event => setRecipientQuery(event.target.value)} placeholder="Buscar contato dentro do lote"/></label>
+                {recipients.length === 0 ? <div className="empty">Nenhum contato encontrado neste lote.</div> : recipients.map(recipient => {
                   const reseller = resellerById.get(recipient.resellerId);
-                  if (!reseller) return null;
+                  if (!reseller) return <div className="campaign-recipient" key={recipient.id}><div><b>Contato não disponível</b><small>ID: {recipient.resellerId}</small></div><span className={`recipient-status recipient-${recipient.status || 'pendente'}`}>{recipientStatusLabel(recipient.status)}</span></div>;
                   const key = `${campaign.id}:${recipient.resellerId}`;
                   return <div className="campaign-recipient" key={recipient.id || key}>
-                    <div><b>{reseller.nome}</b><small>{reseller.telefone} · {activityCycleStatus(reseller)}</small></div>
+                    <div><b>{reseller.nome}</b><small>{reseller.telefone} · {activityCycleStatus(reseller)}{recipient.sentAt ? ` · ${formatDate(recipient.sentAt)}` : ''}</small></div>
                     <select value={recipient.status || 'pendente'} disabled={updatingKey === key} onChange={event => updateRecipient(campaign, recipient.resellerId, event.target.value)}>
                       {recipientStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
-                    <span className={`recipient-status recipient-${recipient.status || 'pendente'}`}>{statusLabel(recipient.status)}</span>
+                    <span className={`recipient-status recipient-${recipient.status || 'pendente'}`}>{recipientStatusLabel(recipient.status)}</span>
                   </div>;
                 })}
               </div>}

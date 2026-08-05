@@ -132,3 +132,40 @@ assert.equal(
 );
 
 console.log('Testes de WhatsApp concluídos: lote de 30, telefone brasileiro e mensagens por situação validados.');
+
+const { campaignRecipientCounts, campaignSummary, filterCampaigns } = await import('../src/services/campaignAnalytics.js');
+
+const campaignFixture = {
+  id: 'campaign-1',
+  name: 'I4 ciclo 11',
+  status: 'concluida',
+  createdAt: new Date().toISOString(),
+  recipients: [
+    { status: 'enviado' },
+    { status: 'respondeu' },
+    { status: 'convertido' },
+    { status: 'nao_respondeu' },
+    { status: 'bloqueado' },
+    { status: 'pendente' },
+  ],
+};
+const campaignCounts = campaignRecipientCounts(campaignFixture);
+assert.equal(campaignCounts.total, 6);
+assert.equal(campaignCounts.worked, 5);
+assert.equal(campaignCounts.confirmedSent, 5);
+assert.equal(campaignCounts.responses, 2);
+assert.equal(campaignCounts.converted, 1);
+assert.equal(campaignCounts.blocked, 1);
+assert.equal(campaignCounts.replyRate, 40);
+assert.equal(campaignCounts.conversionRate, 20);
+
+const campaignsSummary = campaignSummary([campaignFixture]);
+assert.equal(campaignsSummary.campaigns, 1);
+assert.equal(campaignsSummary.total, 6);
+assert.equal(campaignsSummary.responses, 2);
+assert.equal(campaignsSummary.conversions, 1);
+assert.equal(campaignsSummary.blocked, 1);
+assert.equal(filterCampaigns([campaignFixture], { status: 'concluida', query: 'I4' }).length, 1);
+assert.equal(filterCampaigns([campaignFixture], { status: 'em_andamento' }).length, 0);
+
+console.log('Testes de campanhas concluídos: métricas, taxas, filtros e opt-outs validados.');

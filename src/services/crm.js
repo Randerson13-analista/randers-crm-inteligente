@@ -256,6 +256,10 @@ export async function loadCrmData(organizationId, users, isManager) {
       status: row.status,
       lastRun: row.started_at,
       createdAt: row.created_at,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      createdById: row.created_by,
+      createdByName: usersById.get(row.created_by)?.nome || 'Usuário',
       total: metrics.recipients.length,
       ...metrics,
     };
@@ -678,7 +682,7 @@ export async function updateCampaignRecipientStatus(campaignId, resellerId, stat
   if (status !== 'pendente') {
     const { error: runningError } = await supabase
       .from('campaigns')
-      .update({ status: 'em_andamento' })
+      .update({ status: 'em_andamento', started_at: now })
       .eq('id', campaignId)
       .in('status', ['rascunho', 'agendada']);
     ensure(runningError);

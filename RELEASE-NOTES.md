@@ -63,3 +63,16 @@
 2. Republicar a Edge Function `invite-collaborator` com o arquivo desta versão.
 3. Publicar o frontend no GitHub/Vercel.
 4. Em Administração, revisar as situações permitidas por colaborador e clicar em **Redistribuir agora**.
+
+## v10.8 — histórico e resultados de campanhas
+
+- adiciona painel consolidado com lotes, público, trabalhados, respostas, conversões e opt-outs;
+- calcula taxa de resposta e de conversão a partir dos status individuais;
+- permite filtrar campanhas por período, situação e pesquisa textual;
+- exibe criador, data, público e progresso de cada lote;
+- adiciona busca dentro dos destinatários do lote;
+- registra e apresenta as datas de trabalho, resposta e conversão;
+- exporta CSV consolidado ou de um lote específico;
+- integra resultados das campanhas ao módulo Relatórios;
+- preserva o limite de 30 contatos e o modo assistido;
+- não exige migração SQL nem republicação da Edge Function.
