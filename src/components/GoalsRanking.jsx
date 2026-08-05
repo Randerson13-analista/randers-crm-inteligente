@@ -3,8 +3,8 @@ import { CheckCircle2, MessageCircle, Phone, Target, Trophy } from 'lucide-react
 import AvatarPreview from './AvatarPreview';
 import RaceRanking3D from './RaceRanking3D';
 
-const metricCount = (history, user, channel) => history.filter(item => item.usuario === user.nome && (!channel || item.canal === channel)).length;
-const conversions = (history, user) => history.filter(item => item.usuario === user.nome && item.resultado === 'Convertido').length;
+const metricCount = (history, user, channel) => history.filter(item => (item.userId === user.id || (!item.userId && item.usuario === user.nome)) && (!channel || item.canal === channel)).length;
+const conversions = (history, user) => history.filter(item => (item.userId === user.id || (!item.userId && item.usuario === user.nome)) && item.resultado === 'Convertido').length;
 
 export default function GoalsRanking({ users = [], history = [], goals = {}, onGoalChange, currentUser }) {
   const active = users.filter(user => user.ativo);
@@ -50,7 +50,7 @@ export default function GoalsRanking({ users = [], history = [], goals = {}, onG
           {active.map(user => {
             const userGoal = goals[user.id] || { calls: 20, whats: 30, conversions: 5 };
             return <div className="goal-user" key={user.id}>
-              <div className="goal-user-name"><span><AvatarPreview compact avatar={user.avatarConfig}/></span><div><b>{user.nome}</b><small>{user.carteira}</small></div></div>
+              <div className="goal-user-name"><span><AvatarPreview compact avatar={user.avatarConfig}/></span><div><b>{user.nome}</b><small>{user.carteiraResumo || user.carteira}</small></div></div>
               <label>Ligações<input type="number" min="0" value={userGoal.calls} onChange={event => onGoalChange(user.id, { ...userGoal, calls: Number(event.target.value) })}/></label>
               <label>WhatsApp<input type="number" min="0" value={userGoal.whats} onChange={event => onGoalChange(user.id, { ...userGoal, whats: Number(event.target.value) })}/></label>
               <label>Conversões<input type="number" min="0" value={userGoal.conversions} onChange={event => onGoalChange(user.id, { ...userGoal, conversions: Number(event.target.value) })}/></label>
@@ -66,7 +66,7 @@ export default function GoalsRanking({ users = [], history = [], goals = {}, onG
         {ranking.slice(0, 3).map((user, index) => <div className={`podium-card place-${index + 1}`} key={user.id}>
           <div className="medal">{['🥇', '🥈', '🥉'][index]}</div>
           <div className="podium-avatar"><AvatarPreview compact avatar={user.avatarConfig}/></div>
-          <b>{user.nome}</b><small>{user.carteira}</small><strong>{user.points} pts</strong>
+          <b>{user.nome}</b><small>{user.carteiraResumo || user.carteira}</small><strong>{user.points} pts</strong>
           <div className="podium-stats"><span>{user.calls} ligações</span><span>{user.whats} WhatsApps</span><span>{user.conv} conversões</span></div>
         </div>)}
       </div>
@@ -74,7 +74,7 @@ export default function GoalsRanking({ users = [], history = [], goals = {}, onG
         {ranking.map((user, index) => <div className="ranking-row" key={user.id}>
           <span className="rank-pos">{index + 1}º</span>
           <span className="user-avatar"><AvatarPreview compact avatar={user.avatarConfig}/></span>
-          <div><b>{user.nome}</b><small>{user.carteira}</small></div>
+          <div><b>{user.nome}</b><small>{user.carteiraResumo || user.carteira}</small></div>
           <span>{user.calls} ligações</span><span>{user.whats} WhatsApps</span><span>{user.conv} conversões</span><strong>{user.points} pts</strong>
         </div>)}
       </div>

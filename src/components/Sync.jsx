@@ -1,14 +1,43 @@
-import React,{useEffect,useState}from'react';
-import{Cloud,UploadCloud,Download,LogIn,LogOut,ShieldCheck,FileSpreadsheet}from'lucide-react';
-import{loadCloudConfig,saveCloudConfig,loadCloudSession,testConnection,signInCloud,signOutCloud,pushSnapshot,pullSnapshot,pushNormalized,pullNormalized}from'../services/cloud';
-export default function Sync({state,onRestore,notify,audit,user}){
- const[config,setConfig]=useState(loadCloudConfig),[session,setSession]=useState(loadCloudSession),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[status,setStatus]=useState('Modo local'),[busy,setBusy]=useState(false),[lastSync,setLastSync]=useState(localStorage.getItem('randerscrm_last_sync')||''),[mode,setMode]=useState('tables');
- useEffect(()=>saveCloudConfig(config),[config]);
- const run=async(fn)=>{setBusy(true);try{await fn()}catch(e){setStatus(e.message);notify?.(e.message)}finally{setBusy(false)}};
- const connect=()=>run(async()=>{await testConnection(config);setStatus('Conexão com Supabase validada.');notify?.('Conexão validada.')});
- const login=()=>run(async()=>{const s=await signInCloud(config,email,password);setSession(s);setPassword('');setStatus(`Autenticado como ${s.user.email}.`);audit?.(user.nome,'Autenticou a sincronização em nuvem.')});
- const logout=()=>run(async()=>{await signOutCloud(config,session);setSession(null);setStatus('Sessão de nuvem encerrada.')});
- const upload=()=>run(async()=>{if(mode==='snapshot'){const when=await pushSnapshot(config,session,state);setLastSync(when)}else{const result=await pushNormalized(config,session,s=>setStatus(s));setLastSync(result.when);setStatus(`${result.total} registros sincronizados em tabelas individuais.`)}const when=new Date().toISOString();localStorage.setItem('randerscrm_last_sync',when);notify?.('Dados enviados ao Supabase.');audit?.(user.nome,`Sincronizou os dados em modo ${mode}.`)});
- const download=()=>run(async()=>{let cloud;if(mode==='snapshot'){const row=await pullSnapshot(config,session);if(!row)throw new Error('Nenhum backup foi encontrado.');cloud=row.payload}else cloud=await pullNormalized(config,session,s=>setStatus(s));if(!confirm('A restauração substituirá os dados locais atuais. Continuar?'))return;onRestore({...state,...cloud});const when=new Date().toISOString();setLastSync(when);localStorage.setItem('randerscrm_last_sync',when);setStatus('Dados restaurados.');notify?.('Dados restaurados da nuvem.');audit?.(user.nome,`Restaurou os dados em modo ${mode}.`)});
- return <div className="sync-grid"><section className="card sync-card"><div className="section-heading"><div><small>Integração opcional</small><h2>Supabase</h2><p>O CRM continua funcionando localmente mesmo sem conexão.</p></div><Cloud size={34}/></div><label>URL do projeto<input placeholder="https://seuprojeto.supabase.co" value={config.url} onChange={e=>setConfig({...config,url:e.target.value.trim()})}/></label><label>Chave pública anon<textarea rows="4" placeholder="eyJ..." value={config.anonKey} onChange={e=>setConfig({...config,anonKey:e.target.value.trim()})}/></label><button className="secondary" disabled={busy} onClick={connect}><Cloud size={17}/>Testar conexão</button><div className="sync-status"><ShieldCheck size={18}/><span>{status}</span></div></section><section className="card sync-card"><div className="section-heading"><div><small>Conta de nuvem</small><h2>Autenticação e dados</h2><p>Use tabelas individuais para operação real. Snapshot permanece como backup de compatibilidade.</p></div><FileSpreadsheet size={30}/></div>{!session?<><label>E-mail<input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Senha<input type="password" value={password} onChange={e=>setPassword(e.target.value)}/></label><button className="primary" disabled={busy} onClick={login}><LogIn size={17}/>Entrar no Supabase</button></>:<><div className="cloud-user"><b>{session.user.email}</b><small>ID: {session.user.id}</small></div><div className="sync-mode"><button className={mode==='tables'?'active':''} onClick={()=>setMode('tables')}>Tabelas individuais</button><button className={mode==='snapshot'?'active':''} onClick={()=>setMode('snapshot')}>Snapshot</button></div><div className="sync-buttons"><button className="primary" disabled={busy} onClick={upload}><UploadCloud size={17}/>Enviar dados</button><button className="secondary" disabled={busy} onClick={download}><Download size={17}/>Restaurar dados</button><button className="ghost-danger" disabled={busy} onClick={logout}><LogOut size={17}/>Sair da nuvem</button></div></>}{lastSync&&<p className="last-sync">Última sincronização: {new Date(lastSync).toLocaleString('pt-BR')}</p>}</section></div>
+import React, { useState } from 'react';
+import { CheckCircle2, Cloud, RefreshCw, ShieldCheck } from 'lucide-react';
+
+export default function Sync({ state, user, onRefresh, notify }) {
+  const [busy, setBusy] = useState(false);
+  const refresh = async () => {
+    setBusy(true);
+    try {
+      await onRefresh();
+      notify?.('Dados atualizados diretamente do Supabase.');
+    } catch (error) {
+      notify?.(error.message || 'Não foi possível atualizar os dados.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const items = [
+    ['Revendedores', state.revendedores?.length || 0],
+    ['Atendimentos', state.history?.length || 0],
+    ['Agenda', state.agenda?.length || 0],
+    ['Colaboradores', state.users?.length || 0],
+    ['Campanhas', state.campaigns?.length || 0],
+    ['Importações', state.imports?.length || 0],
+  ];
+
+  return <section className="module-page">
+    <div className="sync-status-grid">
+      <article className="panel sync-health-card">
+        <div className="panel-title"><div><small>Conexão oficial</small><h2>Supabase em produção</h2></div><Cloud size={30}/></div>
+        <div className="connection-ok"><CheckCircle2 size={24}/><div><b>Conectado e autenticado</b><small>Os módulos operacionais usam o banco real.</small></div></div>
+        <dl className="sync-details"><div><dt>Usuário</dt><dd>{user.email}</dd></div><div><dt>Organização</dt><dd>{state.organization?.name || 'Randers CRM'}</dd></div><div><dt>Perfil</dt><dd>{user.cargo} · {user.carteiraResumo || user.carteira}</dd></div></dl>
+        <button className="primary" onClick={refresh} disabled={busy}><RefreshCw size={17}/>{busy ? 'Atualizando...' : 'Atualizar dados agora'}</button>
+      </article>
+
+      <article className="panel">
+        <div className="panel-title"><div><small>Registros visíveis</small><h2>Resumo da sincronização</h2></div><ShieldCheck size={24}/></div>
+        <div className="sync-counts">{items.map(([label, value]) => <div key={label}><b>{value}</b><span>{label}</span></div>)}</div>
+        <p className="muted-note">Não é necessário informar novamente URL, chave ou senha nesta tela. A Vercel fornece as variáveis seguras ao aplicativo.</p>
+      </article>
+    </div>
+  </section>;
 }

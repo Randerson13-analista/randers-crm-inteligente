@@ -248,7 +248,7 @@ export default function RaceRanking3D({ ranking = [] }) {
       {top.map((entry, index) => <div key={entry.id} className="race-driver-card" style={{ '--race-color': entry.avatarConfig?.carColor || carColors[index % carColors.length] }}>
         <span className="race-position">{index + 1}º</span>
         <AvatarPreview compact avatar={entry.avatarConfig}/>
-        <div><strong>{entry.nome}</strong><small>{entry.points} pts · {entry.carteira}</small></div>
+        <div><strong>{entry.nome}</strong><small>{entry.points} pts · {entry.carteiraResumo || entry.carteira}</small></div>
       </div>)}
     </div>
   </div>;

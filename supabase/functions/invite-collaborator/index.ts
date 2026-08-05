@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     if (userError || !userData.user) throw new Error('Sessão inválida.')
 
     const body = await req.json()
-    const { organizationId, fullName, email, role, wallet, redirectTo } = body
+    const { organizationId, fullName, email, role, wallet, activitySegments, recoveryGroups, redirectTo } = body
     if (!organizationId || !fullName || !email) throw new Error('Nome, e-mail e organização são obrigatórios.')
 
     const { data: membership, error: membershipError } = await adminClient
@@ -49,6 +49,8 @@ Deno.serve(async (req) => {
       user_id: invited.user.id,
       role: ['administrador','gerente','consultor'].includes(role) ? role : 'consultor',
       wallet: ['recuperacao','cobre_ouro','vip','todas'].includes(wallet) ? wallet : 'recuperacao',
+      activity_segments: Array.isArray(activitySegments) ? activitySegments : [],
+      recovery_groups: Array.isArray(recoveryGroups) ? recoveryGroups : [],
       active: true,
     }, { onConflict: 'organization_id,user_id' })
     if (memberError) throw memberError

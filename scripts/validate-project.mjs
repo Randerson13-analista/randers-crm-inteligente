@@ -7,6 +7,7 @@ const sourceRoot = path.join(root, 'src');
 const errors = [];
 const required = [
   'src/App.jsx',
+  'src/components/AppErrorBoundary.jsx',
   'src/components/Closet.jsx',
   'src/components/AvatarStage3D.jsx',
   'src/components/RaceRanking3D.jsx',

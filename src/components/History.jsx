@@ -1,9 +1,35 @@
-import React,{useMemo,useState} from 'react';
-import {Phone,MessageCircle,NotebookPen} from 'lucide-react';
-export default function History({history,revendedores,user,onAdd}){
- const [form,setForm]=useState({revendedorId:'',canal:'WhatsApp',resultado:'Em contato',observacao:''});
- const visible=useMemo(()=>history.filter(h=>user.cargo==='Administrador'||h.usuario===user.nome).sort((a,b)=>new Date(b.data)-new Date(a.data)),[history,user]);
- const submit=e=>{e.preventDefault();if(!form.revendedorId)return;onAdd({...form,id:crypto.randomUUID(),usuario:user.nome,data:new Date().toISOString()});setForm({...form,revendedorId:'',observacao:''})};
- const name=id=>revendedores.find(r=>r.id===id)?.nome||'Revendedor removido';
- return <section className="module-page"><div className="history-grid"><form className="panel form-panel" onSubmit={submit}><div className="panel-title"><h2>Registrar atendimento</h2><NotebookPen size={20}/></div><label>Revendedor<select value={form.revendedorId} onChange={e=>setForm({...form,revendedorId:e.target.value})}><option value="">Selecione</option>{revendedores.map(r=><option key={r.id} value={r.id}>{r.nome}</option>)}</select></label><div className="form-row"><label>Canal<select value={form.canal} onChange={e=>setForm({...form,canal:e.target.value})}><option>WhatsApp</option><option>Ligação</option><option>Visita</option></select></label><label>Resultado<select value={form.resultado} onChange={e=>setForm({...form,resultado:e.target.value})}><option>Em contato</option><option>Retorno</option><option>Convertido</option><option>Não converteu</option></select></label></div><label>Observação<textarea value={form.observacao} onChange={e=>setForm({...form,observacao:e.target.value})}/></label><button className="primary">Salvar atendimento</button></form><article className="panel"><div className="panel-title"><h2>Linha do tempo</h2><span>{visible.length}</span></div><div className="timeline">{visible.map(h=><div className="timeline-item" key={h.id}><span className="timeline-icon">{h.canal==='Ligação'?<Phone size={17}/>:<MessageCircle size={17}/>}</span><div><b>{name(h.revendedorId)} · {h.resultado}</b><small>{new Date(h.data).toLocaleString('pt-BR')} · {h.usuario}</small><p>{h.observacao||'Sem observação.'}</p></div></div>)}{!visible.length&&<div className="empty">Nenhum atendimento registrado.</div>}</div></article></div></section>
+import React, { useMemo, useState } from 'react';
+import { MessageCircle, NotebookPen, Phone } from 'lucide-react';
+
+export default function History({ history = [], revendedores = [], user, onAdd }) {
+  const [form, setForm] = useState({ revendedorId: '', canal: 'WhatsApp', resultado: 'Em contato', observacao: '' });
+  const manager = ['Administrador', 'Gerente'].includes(user.cargo);
+  const visible = useMemo(() => history
+    .filter(item => manager || item.userId === user.id)
+    .sort((a, b) => new Date(b.data) - new Date(a.data)), [history, user, manager]);
+
+  const submit = event => {
+    event.preventDefault();
+    if (!form.revendedorId) return;
+    onAdd({ ...form, id: crypto.randomUUID(), userId: user.id, usuario: user.nome, data: new Date().toISOString() });
+    setForm(current => ({ ...current, revendedorId: '', observacao: '' }));
+  };
+  const name = id => revendedores.find(item => item.id === id)?.nome || 'Revendedor removido';
+
+  return <section className="module-page"><div className="history-grid">
+    <form className="panel form-panel" onSubmit={submit}>
+      <div className="panel-title"><h2>Registrar atendimento</h2><NotebookPen size={20}/></div>
+      <label>Revendedor<select value={form.revendedorId} onChange={event => setForm({ ...form, revendedorId: event.target.value })}><option value="">Selecione</option>{revendedores.map(item => <option key={item.id} value={item.id}>{item.nome}</option>)}</select></label>
+      <div className="form-row"><label>Canal<select value={form.canal} onChange={event => setForm({ ...form, canal: event.target.value })}><option>WhatsApp</option><option>Ligação</option><option>Visita</option><option>Outro</option></select></label><label>Resultado<select value={form.resultado} onChange={event => setForm({ ...form, resultado: event.target.value })}><option>Não atendeu</option><option>Em contato</option><option>Retorno</option><option>Negociando</option><option>Pedido</option><option>Convertido</option><option>Não converteu</option></select></label></div>
+      <label>Observação<textarea value={form.observacao} onChange={event => setForm({ ...form, observacao: event.target.value })}/></label>
+      <button className="primary">Salvar atendimento</button>
+    </form>
+    <article className="panel">
+      <div className="panel-title"><h2>{manager ? 'Linha do tempo da equipe' : 'Minha linha do tempo'}</h2><span>{visible.length}</span></div>
+      <div className="timeline">{visible.map(item => <div className="timeline-item" key={item.id}>
+        <span className="timeline-icon">{item.canal === 'Ligação' ? <Phone size={17}/> : <MessageCircle size={17}/>}</span>
+        <div><b>{name(item.revendedorId)} · {item.resultado}</b><small>{new Date(item.data).toLocaleString('pt-BR')} · {item.usuario}</small><p>{item.observacao || 'Sem observação.'}</p></div>
+      </div>)}{!visible.length && <div className="empty">Nenhum atendimento registrado.</div>}</div>
+    </article>
+  </div></section>;
 }

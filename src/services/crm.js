@@ -1,4 +1,10 @@
 import { supabase } from '../lib/supabase';
+import { distributeWallets } from './assignment';
+import { DEFAULT_TEMPLATES } from './whatsapp';
+import {
+  normalizeResellerClassification,
+  normalizeWalletLabel,
+} from '../domain/portfolio';
 
 const statusToDb = {
   Pendente: 'pendente',
@@ -11,16 +17,64 @@ const statusToDb = {
   'Não converteu': 'sem_interesse',
   'Sem interesse': 'sem_interesse',
 };
-const statusFromDb = Object.fromEntries(Object.entries(statusToDb).map(([label, value]) => [value, label]));
-const channelToDb = { Ligação: 'ligacao', WhatsApp: 'whatsapp', Visita: 'visita', Outro: 'outro' };
-const channelFromDb = Object.fromEntries(Object.entries(channelToDb).map(([label, value]) => [value, label]));
 
-const ensure = (error) => {
+const statusFromDb = Object.fromEntries(
+  Object.entries(statusToDb).map(([label, value]) => [value, label]),
+);
+
+const channelToDb = {
+  Ligação: 'ligacao',
+  WhatsApp: 'whatsapp',
+  Visita: 'visita',
+  Outro: 'outro',
+};
+
+const channelFromDb = Object.fromEntries(
+  Object.entries(channelToDb).map(([label, value]) => [value, label]),
+);
+
+export const DEFAULT_ORGANIZATION_SETTINGS = {
+  companyName: 'Randers CRM',
+  autoAssignment: true,
+  whatsappTemplates: DEFAULT_TEMPLATES,
+  showAdvancedCloset: true,
+};
+
+const ensure = error => {
   if (error) throw error;
 };
 
+const normalizeText = value => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toLowerCase();
+
+const normalizePhoneKey = value => {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('55') && digits.length > 11) digits = digits.slice(2);
+  return digits;
+};
+
+const rowIdentity = row => {
+  const code = normalizeText(row.codigo);
+  if (code) return `code:${code}`;
+  const phone = normalizePhoneKey(row.telefone);
+  if (phone) return `phone:${phone}`;
+  return `name:${normalizeText(row.nome)}|${normalizeText(row.cidade)}`;
+};
+
+const mergeSettings = settings => ({
+  ...DEFAULT_ORGANIZATION_SETTINGS,
+  ...(settings || {}),
+  whatsappTemplates: {
+    ...DEFAULT_TEMPLATES,
+    ...(settings?.whatsappTemplates || {}),
+  },
+});
+
 export function mapReseller(row) {
-  return {
+  const normalized = normalizeResellerClassification({
     id: row.id,
     codigo: row.external_code || '',
     nome: row.full_name || '',
@@ -30,6 +84,10 @@ export function mapReseller(row) {
     nivel: row.level || '',
     base: row.base || '',
     atividade: row.activity || '',
+  });
+
+  return {
+    ...normalized,
     status: statusFromDb[row.status] || 'Pendente',
     prioridadeScore: row.priority_score || 0,
     bloqueado: Boolean(row.blocked),
@@ -43,21 +101,22 @@ export function mapReseller(row) {
 }
 
 export function resellerToDb(row, organizationId) {
+  const normalized = normalizeResellerClassification(row);
   return {
     organization_id: organizationId,
-    assigned_user_id: row.responsavelId || null,
-    external_code: row.codigo || null,
-    full_name: row.nome || 'Sem nome',
-    phone: row.telefone || null,
-    city: row.cidade || null,
-    neighborhood: row.bairro || null,
-    level: row.nivel || null,
-    base: row.base || null,
-    activity: row.atividade || null,
-    status: statusToDb[row.status] || 'pendente',
-    priority_score: Math.max(0, Math.min(100, Number(row.prioridadeScore || row.score || 0))),
-    blocked: Boolean(row.bloqueado),
-    metadata: row.metadata || {},
+    assigned_user_id: normalized.responsavelId || null,
+    external_code: normalized.codigo || null,
+    full_name: normalized.nome || 'Sem nome',
+    phone: normalized.telefone || null,
+    city: normalized.cidade || null,
+    neighborhood: normalized.bairro || null,
+    level: normalized.nivel || null,
+    base: normalized.base || null,
+    activity: normalized.nivel || null,
+    status: statusToDb[normalized.status] || 'pendente',
+    priority_score: Math.max(0, Math.min(100, Number(normalized.prioridadeScore || normalized.score || 0))),
+    blocked: Boolean(normalized.bloqueado),
+    metadata: normalized.metadata || {},
   };
 }
 
@@ -70,17 +129,33 @@ export async function loadCrmData(organizationId, users, isManager) {
     supabase.from('tasks').select('*').eq('organization_id', organizationId).order('due_at', { ascending: true }),
     supabase.from('goals').select('*').eq('organization_id', organizationId).order('period_start', { ascending: false }),
     supabase.from('campaigns').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }),
+    supabase.from('campaign_recipients').select('campaign_id, reseller_id, status, sent_at, replied_at, converted_at'),
     supabase.from('import_jobs').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }),
+    supabase.from('organizations').select('*').eq('id', organizationId).single(),
   ];
+
   if (isManager) {
-    queries.push(supabase.from('audit_logs').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(500));
+    queries.push(
+      supabase.from('audit_logs').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(500),
+    );
   }
 
   const results = await Promise.all(queries);
   results.forEach(result => ensure(result.error));
-  const [resellersResult, interactionsResult, tasksResult, goalsResult, campaignsResult, importsResult, auditResult] = results;
-  const usersById = new Map((users || []).map(item => [item.id, item]));
 
+  const [
+    resellersResult,
+    interactionsResult,
+    tasksResult,
+    goalsResult,
+    campaignsResult,
+    recipientsResult,
+    importsResult,
+    organizationResult,
+    auditResult,
+  ] = results;
+
+  const usersById = new Map((users || []).map(item => [item.id, item]));
   const revendedores = (resellersResult.data || []).map(row => {
     const reseller = mapReseller(row);
     const responsible = usersById.get(reseller.responsavelId);
@@ -126,6 +201,16 @@ export async function loadCrmData(organizationId, users, isManager) {
     };
   });
 
+  const recipientMetrics = (recipientsResult.data || []).reduce((result, row) => {
+    result[row.campaign_id] ||= { sent: 0, replies: 0, conversions: 0, pending: 0 };
+    const metrics = result[row.campaign_id];
+    if (row.sent_at || row.status === 'aberto' || row.status === 'enviado') metrics.sent += 1;
+    if (row.replied_at) metrics.replies += 1;
+    if (row.converted_at) metrics.conversions += 1;
+    if (!row.sent_at && row.status === 'pendente') metrics.pending += 1;
+    return result;
+  }, {});
+
   const campaigns = (campaignsResult.data || []).map(row => ({
     id: row.id,
     name: row.name,
@@ -134,6 +219,7 @@ export async function loadCrmData(organizationId, users, isManager) {
     status: row.status,
     lastRun: row.started_at,
     createdAt: row.created_at,
+    ...(recipientMetrics[row.id] || { sent: 0, replies: 0, conversions: 0, pending: 0 }),
   }));
 
   const imports = (importsResult.data || []).map(row => ({
@@ -157,45 +243,198 @@ export async function loadCrmData(organizationId, users, isManager) {
     details: row.details || {},
   }));
 
-  return { revendedores, history, agenda, goals, campaigns, imports, audit };
+  const organization = organizationResult.data || {};
+  return {
+    revendedores,
+    history,
+    agenda,
+    goals,
+    campaigns,
+    imports,
+    audit,
+    organization: {
+      id: organization.id || organizationId,
+      name: organization.name || 'Randers CRM',
+      settings: mergeSettings(organization.settings),
+    },
+  };
 }
 
 export function emptyCrmData() {
-  return { revendedores: [], history: [], agenda: [], goals: {}, campaigns: [], imports: [], audit: [] };
+  return {
+    revendedores: [],
+    history: [],
+    agenda: [],
+    goals: {},
+    campaigns: [],
+    imports: [],
+    audit: [],
+    organization: {
+      id: null,
+      name: 'Randers CRM',
+      settings: mergeSettings(),
+    },
+  };
+}
+
+export async function createReseller(row, organizationId) {
+  const payload = resellerToDb(row, organizationId);
+  const { data, error } = await supabase.from('resellers').insert(payload).select('*').single();
+  ensure(error);
+  return mapReseller(data);
 }
 
 export async function updateReseller(id, patch) {
+  const normalized = normalizeResellerClassification(patch);
   const dbPatch = {};
   if ('status' in patch) dbPatch.status = statusToDb[patch.status] || patch.status;
   if ('responsavelId' in patch) dbPatch.assigned_user_id = patch.responsavelId || null;
   if ('nome' in patch) dbPatch.full_name = patch.nome;
   if ('telefone' in patch) dbPatch.phone = patch.telefone || null;
   if ('cidade' in patch) dbPatch.city = patch.cidade || null;
-  if ('nivel' in patch) dbPatch.level = patch.nivel || null;
-  if ('base' in patch) dbPatch.base = patch.base || null;
-  if ('atividade' in patch) dbPatch.activity = patch.atividade || null;
+  if ('bairro' in patch) dbPatch.neighborhood = patch.bairro || null;
+  if ('codigo' in patch) dbPatch.external_code = patch.codigo || null;
+  if ('nivel' in patch || 'base' in patch || 'atividade' in patch) {
+    dbPatch.base = normalized.base || null;
+    dbPatch.level = normalized.nivel || null;
+    dbPatch.activity = normalized.nivel || null;
+  }
   if ('bloqueado' in patch) dbPatch.blocked = Boolean(patch.bloqueado);
   if (!Object.keys(dbPatch).length) return;
   const { error } = await supabase.from('resellers').update(dbPatch).eq('id', id);
   ensure(error);
 }
 
-export async function importResellers(rows, organizationId, uploadedBy, fileName = 'Planilha importada') {
-  if (!rows.length) return [];
-  const payload = rows.map(row => resellerToDb(row, organizationId));
-  const { data, error } = await supabase.from('resellers').insert(payload).select('*');
+export async function deleteReseller(id) {
+  const { error } = await supabase.from('resellers').delete().eq('id', id);
   ensure(error);
-  await supabase.from('import_jobs').insert({
+}
+
+export async function importResellers(
+  rows,
+  organizationId,
+  uploadedBy,
+  fileName = 'Planilha importada',
+  options = {},
+) {
+  if (!rows.length) return { total: 0, inserted: 0, updated: 0, rejected: 0 };
+
+  const consolidated = new Map();
+  let rejected = 0;
+  for (const raw of rows) {
+    const normalized = normalizeResellerClassification(raw);
+    if (!String(normalized.nome || '').trim()) {
+      rejected += 1;
+      continue;
+    }
+    consolidated.set(rowIdentity(normalized), {
+      ...(consolidated.get(rowIdentity(normalized)) || {}),
+      ...normalized,
+    });
+  }
+
+  let prepared = [...consolidated.values()];
+  if (options.autoAssign && options.users?.length) {
+    prepared = distributeWallets(prepared, options.users);
+  }
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('resellers')
+    .select('*')
+    .eq('organization_id', organizationId);
+  ensure(existingError);
+
+  const existing = (existingRows || []).map(mapReseller);
+  const existingByKey = new Map();
+  existing.forEach(item => {
+    const keys = [
+      item.codigo ? `code:${normalizeText(item.codigo)}` : '',
+      item.telefone ? `phone:${normalizePhoneKey(item.telefone)}` : '',
+      `name:${normalizeText(item.nome)}|${normalizeText(item.cidade)}`,
+    ].filter(Boolean);
+    keys.forEach(key => existingByKey.set(key, item));
+  });
+
+  const inserts = [];
+  const updates = [];
+  for (const row of prepared) {
+    const keys = [
+      row.codigo ? `code:${normalizeText(row.codigo)}` : '',
+      row.telefone ? `phone:${normalizePhoneKey(row.telefone)}` : '',
+      `name:${normalizeText(row.nome)}|${normalizeText(row.cidade)}`,
+    ].filter(Boolean);
+    const match = keys.map(key => existingByKey.get(key)).find(Boolean);
+    if (match) updates.push({ id: match.id, payload: resellerToDb(row, organizationId) });
+    else inserts.push(resellerToDb(row, organizationId));
+  }
+
+  let insertedCount = 0;
+  for (let index = 0; index < inserts.length; index += 400) {
+    const batch = inserts.slice(index, index + 400);
+    const { data, error } = await supabase.from('resellers').insert(batch).select('id');
+    ensure(error);
+    insertedCount += data?.length || batch.length;
+  }
+
+  let updatedCount = 0;
+  for (let index = 0; index < updates.length; index += 25) {
+    const batch = updates.slice(index, index + 25);
+    const results = await Promise.all(batch.map(({ id, payload }) => {
+      const { organization_id: _organizationId, ...patch } = payload;
+      return supabase.from('resellers').update(patch).eq('id', id);
+    }));
+    results.forEach(result => ensure(result.error));
+    updatedCount += batch.length;
+  }
+
+  const detectedBase = prepared.some(item => item.base === 'Atividade')
+    ? 'Atividade'
+    : prepared[0]?.base || null;
+
+  const { error: importError } = await supabase.from('import_jobs').insert({
     organization_id: organizationId,
     uploaded_by: uploadedBy,
     file_name: fileName,
-    detected_base: rows[0]?.base || null,
+    detected_base: detectedBase,
     total_rows: rows.length,
-    inserted_rows: data?.length || rows.length,
+    inserted_rows: insertedCount,
+    updated_rows: updatedCount,
+    rejected_rows: rejected,
     status: 'concluido',
     finished_at: new Date().toISOString(),
   });
-  return (data || []).map(mapReseller);
+  ensure(importError);
+
+  return {
+    total: rows.length,
+    inserted: insertedCount,
+    updated: updatedCount,
+    rejected,
+  };
+}
+
+export async function persistAssignments(revendedores, users, organizationId) {
+  const distributed = distributeWallets(revendedores, users);
+  const changes = distributed.filter(item => {
+    const original = revendedores.find(source => source.id === item.id);
+    return original && (original.responsavelId || null) !== (item.responsavelId || null);
+  });
+
+  for (let index = 0; index < changes.length; index += 25) {
+    const batch = changes.slice(index, index + 25);
+    const results = await Promise.all(batch.map(item => supabase
+      .from('resellers')
+      .update({ assigned_user_id: item.responsavelId || null })
+      .eq('organization_id', organizationId)
+      .eq('id', item.id)));
+    results.forEach(result => ensure(result.error));
+  }
+
+  return {
+    changed: changes.length,
+    unassigned: distributed.filter(item => !item.responsavelId).length,
+    distributed,
+  };
 }
 
 export async function createInteraction(item, organizationId, userId) {
@@ -209,7 +448,35 @@ export async function createInteraction(item, organizationId, userId) {
     occurred_at: item.data || new Date().toISOString(),
   }).select('*').single();
   ensure(error);
-  await supabase.from('resellers').update({ status: statusToDb[item.resultado] || 'pendente' }).eq('id', item.revendedorId);
+
+  const { error: statusError } = await supabase
+    .from('resellers')
+    .update({ status: statusToDb[item.resultado] || 'pendente' })
+    .eq('id', item.revendedorId);
+  ensure(statusError);
+
+  // Vincula a resposta à campanha aberta mais recente desse revendedor.
+  const { data: campaignRecipient, error: recipientLookupError } = await supabase
+    .from('campaign_recipients')
+    .select('id')
+    .eq('reseller_id', item.revendedorId)
+    .eq('status', 'aberto')
+    .order('sent_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!recipientLookupError && campaignRecipient) {
+    const now = new Date().toISOString();
+    const campaignPatch = {
+      replied_at: now,
+      status: item.resultado === 'Convertido' ? 'convertido' : 'respondido',
+      ...(item.resultado === 'Convertido' ? { converted_at: now } : {}),
+    };
+    const { error: recipientUpdateError } = await supabase
+      .from('campaign_recipients')
+      .update(campaignPatch)
+      .eq('id', campaignRecipient.id);
+    if (recipientUpdateError) console.warn('Não foi possível atualizar a métrica da campanha:', recipientUpdateError.message);
+  }
   return data;
 }
 
@@ -219,7 +486,7 @@ export async function createTask(item, organizationId, userId) {
     organization_id: organizationId,
     reseller_id: item.revendedorId || null,
     assigned_user_id: item.responsavelId || userId,
-    title: 'Retorno de revendedor',
+    title: item.titulo || 'Retorno de revendedor',
     notes: item.observacao || null,
     due_at: dueAt,
     created_by: userId,
@@ -232,6 +499,11 @@ export async function updateTask(id, patch) {
   const dbPatch = {};
   if ('status' in patch) dbPatch.completed_at = patch.status === 'Concluído' ? new Date().toISOString() : null;
   if ('observacao' in patch) dbPatch.notes = patch.observacao || null;
+  if ('data' in patch || 'hora' in patch) {
+    const date = patch.data || new Date().toISOString().slice(0, 10);
+    const time = patch.hora || '09:00';
+    dbPatch.due_at = new Date(`${date}T${time}:00`).toISOString();
+  }
   const { error } = await supabase.from('tasks').update(dbPatch).eq('id', id);
   ensure(error);
 }
@@ -251,13 +523,35 @@ export async function saveGoal(userId, goal, organizationId, createdBy) {
     orders_target: Number(goal.orders || 0),
     created_by: createdBy,
   };
-  const { data, error } = await supabase.from('goals').upsert(payload, { onConflict: 'organization_id,user_id,period_start,period_end' }).select('*').single();
+  const { data, error } = await supabase
+    .from('goals')
+    .upsert(payload, { onConflict: 'organization_id,user_id,period_start,period_end' })
+    .select('*')
+    .single();
   ensure(error);
   return data;
 }
 
 export async function saveAvatar(userId, avatarConfig) {
   const { error } = await supabase.from('profiles').update({ avatar_config: avatarConfig }).eq('id', userId);
+  ensure(error);
+}
+
+export async function updateProfile(userId, patch) {
+  const dbPatch = {};
+  if ('nome' in patch) dbPatch.full_name = patch.nome?.trim() || '';
+  if ('telefone' in patch) dbPatch.phone = patch.telefone || null;
+  if ('cidade' in patch) dbPatch.city = patch.cidade || null;
+  if ('bio' in patch) dbPatch.bio = patch.bio || null;
+  const { error } = await supabase.from('profiles').update(dbPatch).eq('id', userId);
+  ensure(error);
+}
+
+export async function saveOrganizationSettings(organizationId, name, settings) {
+  const { error } = await supabase
+    .from('organizations')
+    .update({ name: name || 'Randers CRM', settings: mergeSettings(settings) })
+    .eq('id', organizationId);
   ensure(error);
 }
 
@@ -271,7 +565,53 @@ export async function createCampaign(campaign, organizationId, userId) {
     status: campaign.status || 'rascunho',
   }).select('*').single();
   ensure(error);
+
+  const resellerIds = [...new Set(campaign.resellerIds || [])];
+  if (resellerIds.length) {
+    const recipients = resellerIds.map(resellerId => ({
+      campaign_id: data.id,
+      reseller_id: resellerId,
+      status: 'pendente',
+    }));
+    const { error: recipientError } = await supabase.from('campaign_recipients').insert(recipients);
+    ensure(recipientError);
+  }
   return data;
+}
+
+export async function getNextCampaignRecipient(campaignId) {
+  const { data: recipient, error } = await supabase
+    .from('campaign_recipients')
+    .select('id, reseller_id')
+    .eq('campaign_id', campaignId)
+    .eq('status', 'pendente')
+    .order('id')
+    .limit(1)
+    .maybeSingle();
+  ensure(error);
+  if (!recipient) return null;
+
+  const { data: resellerRow, error: resellerError } = await supabase
+    .from('resellers')
+    .select('*')
+    .eq('id', recipient.reseller_id)
+    .single();
+  ensure(resellerError);
+
+  const now = new Date().toISOString();
+  const { error: updateError } = await supabase
+    .from('campaign_recipients')
+    .update({ status: 'aberto', sent_at: now })
+    .eq('id', recipient.id);
+  ensure(updateError);
+
+  const { error: campaignError } = await supabase
+    .from('campaigns')
+    .update({ status: 'em_andamento', started_at: now })
+    .eq('id', campaignId);
+  ensure(campaignError);
+
+  return mapReseller(resellerRow);
 }
 
 export async function deleteCampaign(id) {
