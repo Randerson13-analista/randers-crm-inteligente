@@ -1,7 +1,7 @@
 {
   "name": "randers-crm",
   "private": true,
-  "version": "5.0.0-glb-avatar",
+  "version": "6.0.0-avatar-studio-final",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -1,6 +1,7 @@
-import React,{useEffect,useRef} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
+import {RoomEnvironment} from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {defaultAvatar} from '../data/avatarOptions';
 
 const isHuman=id=>String(id).startsWith('male')||String(id).startsWith('female');
@@ -119,31 +120,39 @@ const isExternalModel=a=>Boolean(a.modelUrl)&&(['realistic-man','realistic-fox',
 function fitModel(object,targetHeight=3.3){const box=new THREE.Box3().setFromObject(object);const size=box.getSize(new THREE.Vector3());const center=box.getCenter(new THREE.Vector3());const scale=targetHeight/Math.max(size.y,.001);object.scale.setScalar(scale);object.position.set(-center.x*scale,-box.min.y*scale-.42,-center.z*scale);object.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.material){o.material=o.material.clone();o.material.roughness=Math.min(.72,o.material.roughness??.55);o.material.metalness=Math.min(.35,o.material.metalness??0)}}});return object}
 
 export default function AvatarPreview({avatar:raw,compact=false,interactive=!compact}){
- const host=useRef(null);const state=useRef({});const a={...defaultAvatar,...raw};
+ const host=useRef(null);const state=useRef({});const [status,setStatus]=useState('loading');const [message,setMessage]=useState('Preparando avatar 3D…');const a={...defaultAvatar,...raw};
  useEffect(()=>{
-  const el=host.current;if(!el)return;
+  const el=host.current;if(!el)return;let disposed=false;
+  setStatus('loading');setMessage(isExternalModel(a)?'Carregando modelo 3D…':'Montando personagem 3D…');
   const scene=new THREE.Scene();scene.background=null;
-  const camera=new THREE.PerspectiveCamera(compact?28:30,1,.1,100);camera.position.set(0,1.25,compact?7.1:6.4);
-  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});renderer.setPixelRatio(Math.min(window.devicePixelRatio,compact?1.25:1.8));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.shadowMap.enabled=!compact;renderer.shadowMap.type=THREE.PCFSoftShadowMap;el.innerHTML='';el.appendChild(renderer.domElement);
-  const hemi=new THREE.HemisphereLight('#eafff4','#17352c',2.1);scene.add(hemi);
-  const key=new THREE.DirectionalLight('#ffffff',3.2);key.position.set(3,6,5);key.castShadow=!compact;scene.add(key);
-  const rim=new THREE.PointLight('#32f59a',3.5,10);rim.position.set(-3,2,2);scene.add(rim);
-  const avatar=new THREE.Group();scene.add(avatar);let mixer=null;let loadCancelled=false;let modelError=null;
+  const camera=new THREE.PerspectiveCamera(compact?27:30,1,.1,100);camera.position.set(0,1.3,compact?7.25:6.25);
+  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:!compact,powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,compact?1.15:1.75));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;renderer.shadowMap.enabled=!compact;renderer.shadowMap.type=THREE.PCFSoftShadowMap;el.innerHTML='';el.appendChild(renderer.domElement);
+  const pmrem=new THREE.PMREMGenerator(renderer);const env=new RoomEnvironment();scene.environment=pmrem.fromScene(env,.04).texture;env.dispose();
+  const hemi=new THREE.HemisphereLight('#f1fff7','#11362c',1.55);scene.add(hemi);
+  const key=new THREE.DirectionalLight('#fffdf8',4.2);key.position.set(3.8,6.4,5.3);key.castShadow=!compact;key.shadow.mapSize.set(1024,1024);scene.add(key);
+  const fill=new THREE.DirectionalLight('#b9f7d7',1.6);fill.position.set(-4,2.5,3);scene.add(fill);
+  const rim=new THREE.PointLight('#2dff98',5.2,12);rim.position.set(-3.2,2.8,-1.5);scene.add(rim);
+  const avatar=new THREE.Group();scene.add(avatar);let mixer=null;let loadCancelled=false;
+  const showFallback=(reason)=>{if(loadCancelled||disposed)return;avatar.clear();avatar.add(buildAvatar({...a,character:String(a.character).includes('female')?'female-classic':'male-classic',modelUrl:''}));setStatus('fallback');setMessage(reason||'Modelo externo indisponível; exibindo avatar 3D interno.');resize()};
+  const loadTimer=isExternalModel(a)?setTimeout(()=>showFallback('O modelo demorou para carregar; exibindo avatar 3D interno.'),12000):null;
   if(isExternalModel(a)){
-   const loader=new GLTFLoader();
-   loader.load(a.modelUrl,gltf=>{if(loadCancelled)return;const model=fitModel(gltf.scene,compact?2.8:3.35);avatar.add(model);if(gltf.animations?.length){mixer=new THREE.AnimationMixer(model);const preferred=gltf.animations.find(c=>/idle|survey|walk/i.test(c.name))||gltf.animations[0];mixer.clipAction(preferred).play()}resize()},undefined,err=>{modelError=err;avatar.add(buildAvatar({...a,character:'male-classic',modelUrl:''}));resize()});
-  }else avatar.add(buildAvatar(a));
-  const floor=mesh(new THREE.CylinderGeometry(1.25,1.45,.18,64),mat('#0b6f46',{metalness:.28,roughness:.25}),scene,[0,-.62,0]);floor.receiveShadow=true;
-  const ring=new THREE.Mesh(new THREE.TorusGeometry(1.08,.035,10,64),new THREE.MeshStandardMaterial({color:'#6bffb0',emissive:'#38f797',emissiveIntensity:2}));ring.rotation.x=Math.PI/2;ring.position.y=-.51;scene.add(ring);
-  let rotY=0,rotX=0,zoom=1,drag=false,lastX=0,lastY=0,frame=0;
-  const resize=()=>{const w=Math.max(1,el.clientWidth),h=Math.max(1,el.clientHeight);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();renderer.render(scene,camera)};resize();const ro=new ResizeObserver(resize);ro.observe(el);
+   const loader=new GLTFLoader();loader.setCrossOrigin('anonymous');
+   loader.load(a.modelUrl,gltf=>{if(loadCancelled||disposed)return;clearTimeout(loadTimer);avatar.clear();const model=fitModel(gltf.scene,compact?2.82:3.4);avatar.add(model);if(gltf.animations?.length){mixer=new THREE.AnimationMixer(model);const preferred=gltf.animations.find(c=>/idle|survey|walk|breath|stand/i.test(c.name))||gltf.animations[0];mixer.clipAction(preferred).reset().fadeIn(.2).play()}setStatus('ready');setMessage('Modelo 3D carregado.');resize()},undefined,()=>{clearTimeout(loadTimer);showFallback('Não foi possível carregar o arquivo GLB/GLTF.')});
+  }else{avatar.add(buildAvatar(a));setStatus('ready');setMessage('Avatar 3D pronto.');}
+  const floor=mesh(new THREE.CylinderGeometry(1.3,1.52,.2,64),mat('#075c3b',{metalness:.34,roughness:.22}),scene,[0,-.62,0]);floor.receiveShadow=true;
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(1.1,.035,10,64),new THREE.MeshStandardMaterial({color:'#73ffb4',emissive:'#37f390',emissiveIntensity:2.4,metalness:.2,roughness:.2}));ring.rotation.x=Math.PI/2;ring.position.y=-.5;scene.add(ring);
+  const backGlow=new THREE.Mesh(new THREE.CircleGeometry(1.42,64),new THREE.MeshBasicMaterial({color:'#31ee8c',transparent:true,opacity:.075,depthWrite:false}));backGlow.position.set(0,1.25,-.55);scene.add(backGlow);
+  let rotY=0,rotX=0,zoom=1,drag=false,lastX=0,lastY=0,frame=0,visible=true;
+  const resize=()=>{if(disposed)return;const w=Math.max(1,el.clientWidth),h=Math.max(1,el.clientHeight);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();renderer.render(scene,camera)};resize();const ro=new ResizeObserver(resize);ro.observe(el);
+  const io=new IntersectionObserver(([entry])=>{visible=entry.isIntersecting},{rootMargin:'120px'});io.observe(el);
   const down=e=>{if(!interactive)return;drag=true;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture?.(e.pointerId)};
-  const move=e=>{if(!drag)return;rotY+=(e.clientX-lastX)*.012;rotX=Math.max(-.25,Math.min(.25,rotX+(e.clientY-lastY)*.006));lastX=e.clientX;lastY=e.clientY};
-  const up=()=>drag=false;const wheel=e=>{if(!interactive)return;e.preventDefault();zoom=Math.max(.72,Math.min(1.38,zoom-e.deltaY*.0008))};
+  const move=e=>{if(!drag)return;rotY+=(e.clientX-lastX)*.011;rotX=Math.max(-.22,Math.min(.22,rotX+(e.clientY-lastY)*.005));lastX=e.clientX;lastY=e.clientY};
+  const up=()=>drag=false;const wheel=e=>{if(!interactive)return;e.preventDefault();zoom=Math.max(.68,Math.min(1.42,zoom-e.deltaY*.0008))};
   renderer.domElement.addEventListener('pointerdown',down);renderer.domElement.addEventListener('pointermove',move);renderer.domElement.addEventListener('pointerup',up);renderer.domElement.addEventListener('pointercancel',up);renderer.domElement.addEventListener('wheel',wheel,{passive:false});
-  let previous=performance.now();const animate=t=>{const dt=Math.min(.05,(t-previous)/1000);previous=t;mixer?.update(dt);avatar.rotation.y=rotY+(interactive?Math.sin(t*.00035)*.055:0);avatar.rotation.x=rotX;avatar.scale.setScalar(zoom);if(interactive)avatar.position.y=Math.sin(t*.002)*.018;renderer.render(scene,camera);if(interactive||mixer)frame=requestAnimationFrame(animate)};frame=requestAnimationFrame(animate);
+  let previous=performance.now();const animate=t=>{if(disposed)return;const dt=Math.min(.05,(t-previous)/1000);previous=t;if(visible){mixer?.update(dt);avatar.rotation.y=rotY+(interactive&&!drag?Math.sin(t*.0003)*.045:0);avatar.rotation.x=rotX;avatar.scale.setScalar(zoom);if(interactive)avatar.position.y=Math.sin(t*.0018)*.014;renderer.render(scene,camera)}frame=requestAnimationFrame(animate)};frame=requestAnimationFrame(animate);
   state.current={renderer,scene,camera,avatar};
-  return()=>{loadCancelled=true;cancelAnimationFrame(frame);mixer?.stopAllAction();ro.disconnect();renderer.domElement.removeEventListener('pointerdown',down);renderer.domElement.removeEventListener('pointermove',move);renderer.domElement.removeEventListener('pointerup',up);renderer.domElement.removeEventListener('pointercancel',up);renderer.domElement.removeEventListener('wheel',wheel);scene.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material?.dispose?.()});renderer.dispose();el.innerHTML=''};
+  return()=>{disposed=true;loadCancelled=true;clearTimeout(loadTimer);cancelAnimationFrame(frame);mixer?.stopAllAction();io.disconnect();ro.disconnect();renderer.domElement.removeEventListener('pointerdown',down);renderer.domElement.removeEventListener('pointermove',move);renderer.domElement.removeEventListener('pointerup',up);renderer.domElement.removeEventListener('pointercancel',up);renderer.domElement.removeEventListener('wheel',wheel);scene.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material?.dispose?.()});scene.environment?.dispose?.();pmrem.dispose();renderer.dispose();if(el)el.innerHTML=''};
  },[JSON.stringify(a),compact,interactive]);
- return <div ref={host} className={`avatar-render avatar-3d ${compact?'compact':''}`} title={`${a.character} · ${a.outfit}`} aria-label="Avatar tridimensional personalizado"/>;
+ return <div ref={host} className={`avatar-render avatar-3d ${compact?'compact':''} status-${status}`} title={`${a.character} · ${a.outfit}`} aria-label="Avatar tridimensional personalizado">{!compact&&status==='loading'&&<div className="avatar-3d-status"><i/><span>{message}</span></div>}{!compact&&status==='fallback'&&<div className="avatar-3d-warning">{message}</div>}</div>;
 }
