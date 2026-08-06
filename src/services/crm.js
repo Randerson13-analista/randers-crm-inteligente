@@ -607,6 +607,46 @@ export async function updateProfile(userId, patch) {
   ensure(error);
 }
 
+
+export async function uploadProfilePhoto(userId, file) {
+  if (!supabase) throw new Error('Supabase não configurado.');
+  if (!file || !String(file.type || '').startsWith('image/')) throw new Error('Selecione uma imagem válida.');
+  if (file.size > 5 * 1024 * 1024) throw new Error('A foto deve ter no máximo 5 MB.');
+
+  const path = `${userId}/profile`;
+  const { error: uploadError } = await supabase.storage
+    .from('profile-photos')
+    .upload(path, file, {
+      upsert: true,
+      contentType: file.type,
+      cacheControl: '3600',
+    });
+  ensure(uploadError);
+
+  const { data } = supabase.storage.from('profile-photos').getPublicUrl(path);
+  const publicUrl = data?.publicUrl ? `${data.publicUrl}?v=${Date.now()}` : '';
+  if (!publicUrl) throw new Error('Não foi possível gerar a URL da foto.');
+
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .update({ photo_url: publicUrl })
+    .eq('id', userId);
+  ensure(profileError);
+  return publicUrl;
+}
+
+export async function removeProfilePhoto(userId) {
+  if (!supabase) throw new Error('Supabase não configurado.');
+  const path = `${userId}/profile`;
+  const { error: removeError } = await supabase.storage.from('profile-photos').remove([path]);
+  if (removeError && !/not found/i.test(removeError.message || '')) throw removeError;
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .update({ photo_url: null })
+    .eq('id', userId);
+  ensure(profileError);
+}
+
 export async function saveOrganizationSettings(organizationId, name, settings) {
   const { error } = await supabase
     .from('organizations')

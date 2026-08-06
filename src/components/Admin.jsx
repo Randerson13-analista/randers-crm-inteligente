@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, RefreshCw, Save, UserPlus, Users } from 'lucide-react';
-import AvatarPreview from './AvatarPreview';
-import { defaultAvatar } from '../data/avatarOptions';
+import ProfilePhoto from './ProfilePhoto';
 import { assignmentSummary } from '../services/assignment';
 import {
   ACTIVITY_CYCLE_STATUSES,
@@ -217,7 +216,7 @@ export default function Admin({ users, revendedores = [], onInvite, onUpdate, on
         <div className="panel-title"><div><small>Equipe real no Supabase</small><h2>Usuários e carteiras</h2></div><span>{users.length}</span></div>
         {loading ? <div className="empty-state">Carregando colaboradores...</div> : <div className="user-list professional-user-list">
           {users.map(user => <div className="user-row professional-user-row" key={user.id}>
-            <span className="user-avatar"><AvatarPreview compact avatar={user.avatarConfig || defaultAvatar}/></span>
+            <span className="user-avatar"><ProfilePhoto name={user.nome} photoUrl={user.photoUrl} size="small"/></span>
             <div className="user-details"><b>{user.nome}</b><small>{user.email || 'E-mail pendente'} · {user.emailConfirmed ? 'Confirmado' : 'Aguardando confirmação'}</small></div>
             <label className="switch"><input type="checkbox" checked={user.ativo} onChange={event => onUpdate(user.id, { ativo: event.target.checked }).catch(() => {})}/><span>{user.ativo ? 'Ativo' : 'Inativo'}</span></label>
             <UserPortfolioEditor user={user} onUpdate={onUpdate}/>

@@ -107,6 +107,7 @@ export async function loadAppUser(authUser) {
     telefone: profile?.phone || '',
     cidade: profile?.city || '',
     bio: profile?.bio || '',
+    photoUrl: profile?.photo_url || '',
     cargo: roleLabels[membership.role] || 'Consultor',
     carteira,
     activitySegments: Array.isArray(membership.activity_segments) ? membership.activity_segments : defaults.activitySegments,

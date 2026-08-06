@@ -48,6 +48,7 @@ create table if not exists public.profiles (
   phone text,
   city text,
   bio text,
+  photo_url text,
   avatar_config jsonb not null default '{}'::jsonb,
   xp integer not null default 0 check (xp >= 0),
   coins integer not null default 0 check (coins >= 0),
@@ -720,3 +721,9 @@ values
 on conflict (code) do nothing;
 
 commit;
+
+
+-- Fotos públicas de perfil; uploads continuam protegidos por usuário.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('profile-photos', 'profile-photos', true, 5242880, array['image/jpeg','image/png','image/webp']::text[])
+on conflict (id) do nothing;

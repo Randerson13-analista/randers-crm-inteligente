@@ -21,8 +21,8 @@ import Sync from './components/Sync';
 import Achievements from './components/Achievements';
 import Profile from './components/Profile';
 import SettingsPanel from './components/SettingsPanel';
-import AvatarPreview from './components/AvatarPreview';
-import { Bell, LogOut } from 'lucide-react';
+import ProfilePhoto from './components/ProfilePhoto';
+import { Bell, LogOut, Menu } from 'lucide-react';
 import { loadState, saveState } from './services/storage';
 import { scoreRevendedor } from './services/intelligence';
 import { distributeWallets } from './services/assignment';
@@ -42,12 +42,14 @@ import {
   loadCrmData,
   logAudit,
   persistAssignments,
+  removeProfilePhoto,
   saveAvatar,
   saveGoal,
   saveOrganizationSettings,
   setResellerWhatsAppOptOut,
   updateCampaignRecipientStatus,
   updateProfile,
+  uploadProfilePhoto,
   updateReseller,
   updateTask,
 } from './services/crm';
@@ -63,8 +65,8 @@ const titles = {
   Relatórios: ['Relatórios', 'Exporte dados e acompanhe resultados.'],
   'Importar planilhas': ['Importar planilhas', 'Envie suas bases e deixe o CRM classificar e atualizar os registros.'],
   Sincronização: ['Sincronização', 'Acompanhe a conexão e os dados em nuvem.'],
-  'Meu Closet': ['Meu Closet Boti', 'Personalize seu avatar. O acabamento live action será refinado na etapa visual final.'],
-  'Meu perfil': ['Meu perfil', 'Atualize seus dados, senha, avatar e acompanhe suas conquistas.'],
+  'Meu Closet': ['Meu Closet Boti', 'Área de personalização mantida para uma atualização futura.'],
+  'Meu perfil': ['Meu perfil', 'Atualize sua foto, dados pessoais, senha e acompanhe suas conquistas.'],
   Administração: ['Administração', 'Cadastre colaboradores e distribua segmentações dentro de Atividade.'],
   Auditoria: ['Auditoria', 'Consulte as principais ações realizadas no sistema.'],
   Configurações: ['Configurações', 'Defina mensagens, distribuição automática e preferências da organização.'],
@@ -84,6 +86,7 @@ export default function App() {
   const [toast, setToast] = useState('');
   const [showNotifs, setShowNotifs] = useState(false);
   const [selectedRev, setSelectedRev] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => saveState(state), [state]);
 
@@ -465,6 +468,28 @@ export default function App() {
           notify(error.message || 'Não foi possível atualizar o perfil.');
           throw error;
         }
+      }} onPhotoUpload={async file => {
+        try {
+          const photoUrl = await uploadProfilePhoto(user.id, file);
+          setUser(current => ({ ...current, photoUrl }));
+          setState(current => ({ ...current, users: current.users.map(item => item.id === user.id ? { ...item, photoUrl } : item) }));
+          await audit('Atualizou a foto do perfil.', 'profile', user.id);
+          notify('Foto do perfil atualizada.');
+        } catch (error) {
+          notify(error.message || 'Não foi possível enviar a foto.');
+          throw error;
+        }
+      }} onPhotoRemove={async () => {
+        try {
+          await removeProfilePhoto(user.id);
+          setUser(current => ({ ...current, photoUrl: '' }));
+          setState(current => ({ ...current, users: current.users.map(item => item.id === user.id ? { ...item, photoUrl: '' } : item) }));
+          await audit('Removeu a foto do perfil.', 'profile', user.id);
+          notify('Foto removida. As iniciais serão exibidas.');
+        } catch (error) {
+          notify(error.message || 'Não foi possível remover a foto.');
+          throw error;
+        }
       }}/>
       <Achievements user={user} history={state.history}/>
     </div>;
@@ -572,16 +597,17 @@ export default function App() {
   }
 
   return <div className="app-shell">
-    <Sidebar active={active} onChange={setActive} user={user}/>
+    <Sidebar active={active} onChange={setActive} user={user} mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)}/>
     <main className="main">
       <header>
-        <div><small>{active === 'Meu Closet' ? 'Perfil' : state.organization?.name || 'Randers’CRM'}</small><h1>{title}</h1><p>{subtitle}</p></div>
+        <button className="mobile-menu-btn" type="button" aria-label="Abrir menu" onClick={() => setSidebarOpen(true)}><Menu size={21}/></button>
+        <div className="header-copy"><small>{active === 'Meu Closet' ? 'Perfil' : state.organization?.name || 'Randers’CRM'}</small><h1>{title}</h1><p>{subtitle}</p></div>
         <div className="header-actions">
           <div className="notification-wrap">
             <button className="icon-btn" onClick={() => setShowNotifs(value => !value)}><Bell size={20}/>{notifications.length > 0 && <i className="notification-badge">{notifications.length}</i>}</button>
             {showNotifs && <Notifications items={notifications} onClose={() => setShowNotifs(false)}/>} 
           </div>
-          <div className="header-user"><span><AvatarPreview compact avatar={user.avatarConfig}/></span><div><b>{user.nome}</b><small>{user.cargo}</small></div></div>
+          <div className="header-user"><ProfilePhoto name={user.nome} photoUrl={user.photoUrl} size="small"/><div><b>{user.nome}</b><small>{user.cargo}</small></div></div>
           <button className="logout" onClick={async () => {
             await audit('Saiu do sistema.');
             try { await signOut(); } finally { setUser(null); setActive('Dashboard'); }

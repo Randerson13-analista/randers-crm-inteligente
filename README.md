@@ -40,3 +40,8 @@ npm run validate
 npm run test:core
 npm run build
 ```
+
+## Atualização final v10.9
+
+Antes do deploy, execute `supabase/migrations/20260805_profile_photos_final_ui.sql`.
+Esta migração cria a coluna de foto, o bucket `profile-photos`, as políticas de acesso por usuário e corrige indicadores antigos de e-mail confirmado.

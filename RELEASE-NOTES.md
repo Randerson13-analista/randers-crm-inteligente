@@ -76,3 +76,13 @@
 - integra resultados das campanhas ao módulo Relatórios;
 - preserva o limite de 30 contatos e o modo assistido;
 - não exige migração SQL nem republicação da Edge Function.
+
+## v10.9-final — 05/08/2026
+
+- Substitui avatares de perfil por foto real ou iniciais automáticas.
+- Adiciona upload e remoção segura de foto no Supabase Storage.
+- Mantém o menu lateral fixo durante a rolagem.
+- Organiza a navegação em submenus recolhíveis.
+- Adiciona menu lateral funcional no celular.
+- Oculta o Closet da navegação operacional; o código foi preservado para evolução futura.
+- Sincroniza o indicador de confirmação de e-mail de perfis antigos.

@@ -66,7 +66,7 @@ export async function listOrganizationUsers(organizationId) {
       .order('created_at'),
     supabase
       .from('profiles')
-      .select('id, full_name, email, phone, city, bio, avatar_config, xp, coins, email_confirmed, must_change_password, created_at'),
+      .select('id, full_name, email, phone, city, bio, photo_url, avatar_config, xp, coins, email_confirmed, must_change_password, created_at'),
   ]);
 
   if (membershipError) throw membershipError;
@@ -95,6 +95,7 @@ export async function listOrganizationUsers(organizationId) {
       telefone: profile.phone || '',
       cidade: profile.city || '',
       bio: profile.bio || '',
+      photoUrl: profile.photo_url || '',
       cargo: roleLabels[membership.role] || 'Consultor',
       carteira: legacyWallet,
       activitySegments,

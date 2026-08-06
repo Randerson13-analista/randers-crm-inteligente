@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { KeyRound, Save, UserCircle } from 'lucide-react';
-import AvatarPreview from './AvatarPreview';
+import React, { useEffect, useRef, useState } from 'react';
+import { Camera, KeyRound, Save, Trash2, UserCircle } from 'lucide-react';
+import ProfilePhoto from './ProfilePhoto';
 import { changePassword } from '../services/auth';
 
-export default function Profile({ user, onSave, onNotify }) {
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
+const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+export default function Profile({ user, onSave, onPhotoUpload, onPhotoRemove, onNotify }) {
   const [form, setForm] = useState({
     nome: user.nome || '',
     telefone: user.telefone || '',
@@ -14,6 +17,8 @@ export default function Profile({ user, onSave, onNotify }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     setForm({ nome: user.nome || '', telefone: user.telefone || '', cidade: user.cidade || '', bio: user.bio || '' });
@@ -26,6 +31,38 @@ export default function Profile({ user, onSave, onNotify }) {
       await onSave(form);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const choosePhoto = () => fileInputRef.current?.click();
+
+  const handlePhoto = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!ACCEPTED_TYPES.has(file.type)) {
+      onNotify?.('Use uma imagem JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > MAX_PHOTO_SIZE) {
+      onNotify?.('A foto deve ter no máximo 5 MB.');
+      return;
+    }
+    setPhotoBusy(true);
+    try {
+      await onPhotoUpload(file);
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const removePhoto = async () => {
+    if (!user.photoUrl || !window.confirm('Remover a foto do perfil?')) return;
+    setPhotoBusy(true);
+    try {
+      await onPhotoRemove();
+    } finally {
+      setPhotoBusy(false);
     }
   };
 
@@ -52,7 +89,19 @@ export default function Profile({ user, onSave, onNotify }) {
     <div className="profile-layout">
       <article className="panel profile-summary-card">
         {user.mustChangePassword && <div className="form-error">Troque a senha provisória antes de continuar usando a conta.</div>}
-        <div className="profile-large-avatar"><AvatarPreview avatar={user.avatarConfig}/></div>
+        <div className="profile-photo-editor">
+          <ProfilePhoto name={user.nome} photoUrl={user.photoUrl} size="xlarge"/>
+          <input ref={fileInputRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhoto}/>
+          <div className="profile-photo-actions">
+            <button type="button" className="secondary-btn" onClick={choosePhoto} disabled={photoBusy}>
+              <Camera size={17}/>{photoBusy ? 'Aguarde...' : user.photoUrl ? 'Trocar foto' : 'Adicionar foto'}
+            </button>
+            {user.photoUrl && <button type="button" className="secondary-btn danger-outline" onClick={removePhoto} disabled={photoBusy}>
+              <Trash2 size={17}/>Remover
+            </button>}
+          </div>
+          <small>JPG, PNG ou WebP · máximo de 5 MB. Sem foto, o CRM mostra suas iniciais.</small>
+        </div>
         <h2>{user.nome}</h2>
         <p>{user.email}</p>
         <div className="profile-badges"><span>{user.cargo}</span><span>{user.carteiraResumo || user.carteira}</span><span>{user.emailConfirmed ? 'E-mail confirmado' : 'E-mail pendente'}</span></div>

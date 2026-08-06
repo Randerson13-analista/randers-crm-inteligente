@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { AlertTriangle, Clock3, TrendingUp, Users } from 'lucide-react';
-import AvatarPreview from './AvatarPreview';
+import ProfilePhoto from './ProfilePhoto';
 
 export default function ManagerPanel({ users = [], history = [], agenda = [] }) {
   const active = users.filter(user => user.ativo && user.cargo === 'Consultor');
@@ -23,7 +23,7 @@ export default function ManagerPanel({ users = [], history = [], agenda = [] }) 
     <article className="panel"><div className="panel-title"><h2>Desempenho da equipe</h2><span>Visão gerencial</span></div><div className="manager-table">
       <div className="manager-row manager-head"><span>Colaborador</span><span>Carteira</span><span>Atendimentos</span><span>Conversões</span><span>Taxa</span><span>Atrasados</span></div>
       {data.map(user => <div className="manager-row" key={user.id}>
-        <span className="manager-user"><i><AvatarPreview compact avatar={user.avatarConfig}/></i><b>{user.nome}</b></span>
+        <span className="manager-user"><i><ProfilePhoto name={user.nome} photoUrl={user.photoUrl} size="small"/></i><b>{user.nome}</b></span>
         <span>{user.carteiraResumo || user.carteira}</span><span>{user.total}</span><span>{user.conv}</span><span>{user.rate}%</span><span className={user.overdue ? 'danger-text' : ''}>{user.overdue}</span>
       </div>)}
       {!data.length && <div className="empty">Nenhum consultor ativo.</div>}
